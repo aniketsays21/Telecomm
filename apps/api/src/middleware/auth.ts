@@ -24,12 +24,12 @@ const authPlugin: FastifyPluginAsync = async (app) => {
 
 export const authMiddleware = fp(authPlugin);
 
-export function requireAuth(request: FastifyRequest, reply: FastifyReply) {
+export function requireAuth(request: FastifyRequest, reply: FastifyReply): SessionPayload | false {
   if (!request.session?.userId) {
     reply.code(401).send({ error: 'Unauthorized' });
     return false;
   }
-  return true;
+  return request.session;
 }
 
 export function requireAdmin(request: FastifyRequest, reply: FastifyReply) {

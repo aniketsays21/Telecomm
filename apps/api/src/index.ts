@@ -5,6 +5,7 @@ import { authMiddleware } from './middleware/auth.js';
 import { authRoutes } from './routes/auth/index.js';
 import { usersRoutes } from './routes/users/index.js';
 import { workspacesRoutes } from './routes/workspaces/index.js';
+import { onboardingRoutes } from './routes/onboarding/index.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
 
@@ -26,6 +27,7 @@ async function build() {
   await app.register(authRoutes);
   await app.register(usersRoutes);
   await app.register(workspacesRoutes);
+  await app.register(onboardingRoutes);
 
   return app;
 }

@@ -24,7 +24,7 @@ export async function signupAction(_prev: unknown, formData: FormData) {
   } catch (e: any) {
     return { error: e.message };
   }
-  redirect('/inbox');
+  redirect('/onboarding');
 }
 
 export async function loginAction(_prev: unknown, formData: FormData) {
@@ -44,6 +44,7 @@ export async function loginAction(_prev: unknown, formData: FormData) {
   } catch (e: any) {
     return { error: e.message };
   }
+  // Agents go straight to inbox; admins go through onboarding if not complete
   redirect('/inbox');
 }
 
@@ -64,12 +65,70 @@ export async function acceptInviteAction(token: string, _prev: unknown, formData
   } catch (e: any) {
     return { error: e.message };
   }
-  redirect('/inbox');
+  redirect('/onboarding');
 }
 
 export async function logoutAction() {
   await clearSession();
   redirect('/login');
+}
+
+export async function connectEmailAction(_prev: unknown, formData: FormData) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+
+  const supportEmail = formData.get('supportEmail') as string;
+  try {
+    const { api } = await import('./api');
+    const res = await api.connectEmail(session.token, supportEmail);
+    return { success: true, inboundEmail: res.inboundEmail, instructions: res.forwardingInstructions };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
+export async function addSourceAction(_prev: unknown, formData: FormData) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+
+  const type = formData.get('type') as string;
+  const name = formData.get('name') as string;
+  const url = formData.get('url') as string | null;
+
+  try {
+    const { api } = await import('./api');
+    await api.addSource(session.token, { type, name, url: url ?? undefined });
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
+export async function deleteSourceAction(id: string) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return;
+  const { api } = await import('./api');
+  await api.deleteSource(session.token, id);
+}
+
+export async function markWidgetSeenAction() {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return;
+  const { api } = await import('./api');
+  await api.markWidgetSeen(session.token);
+}
+
+export async function completeOnboardingAction() {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) redirect('/login');
+  const { api } = await import('./api');
+  await api.completeOnboarding(session!.token);
+  redirect('/inbox');
 }
 
 export async function inviteUserAction(_prev: unknown, formData: FormData) {

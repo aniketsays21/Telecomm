@@ -26,6 +26,19 @@ export type AuthResponse = {
   workspace?: { id: string; slug: string; name: string };
 };
 
+export type OnboardingData = {
+  onboardingState: {
+    emailConnected?: boolean;
+    sourcesConnected?: boolean;
+    widgetInstalled?: boolean;
+  };
+  isLive: boolean;
+  slug: string;
+  inboundEmail: string;
+  widgetSnippet: string;
+  sources: Array<{ id: string; type: string; name: string; status: string }>;
+};
+
 export const api = {
   signup: (body: { name: string; email: string; password: string; workspaceName: string }) =>
     request<AuthResponse>('/auth/signup', { method: 'POST', body: JSON.stringify(body) }),
@@ -48,4 +61,30 @@ export const api = {
     request<{ id: string; email: string; inviteLink: string }>(
       '/users/invite', { method: 'POST', body: JSON.stringify(body) }, token
     ),
+
+  // Onboarding
+  getOnboarding: (token: string) =>
+    request<OnboardingData>('/onboarding', {}, token),
+
+  connectEmail: (token: string, supportEmail: string) =>
+    request<{ inboundEmail: string; forwardingInstructions: string }>(
+      '/onboarding/email', { method: 'POST', body: JSON.stringify({ supportEmail }) }, token
+    ),
+
+  addSource: (token: string, body: { type: string; name: string; url?: string; fileName?: string; fileMime?: string }) =>
+    request<{ source: { id: string; type: string; name: string } }>(
+      '/onboarding/sources', { method: 'POST', body: JSON.stringify(body) }, token
+    ),
+
+  deleteSource: (token: string, id: string) =>
+    fetch(`${API}/onboarding/sources/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  markWidgetSeen: (token: string) =>
+    request<{ ok: boolean }>('/onboarding/widget-seen', { method: 'POST', body: '{}' }, token),
+
+  completeOnboarding: (token: string) =>
+    request<{ ok: boolean; isLive: boolean }>('/onboarding/complete', { method: 'POST', body: '{}' }, token),
 };
