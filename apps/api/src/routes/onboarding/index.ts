@@ -80,20 +80,27 @@ export async function onboardingRoutes(app: FastifyInstance) {
     const body = z.object({
       type: z.enum(['website', 'file', 'manual']),
       name: z.string().min(1),
-      url: z.string().url().optional(),
-      // file content handled separately; for now store name + mime
+      startUrl: z.string().url().optional(),
+      url: z.string().url().optional(), // legacy alias for startUrl
+      content: z.string().optional(),
       fileName: z.string().optional(),
       fileMime: z.string().optional(),
     }).safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
-    const { type, name, url, fileName, fileMime } = body.data;
+    const { type, name, startUrl, url, content, fileName, fileMime } = body.data;
+
+    const config: Record<string, unknown> = {};
+    if (startUrl ?? url) config.startUrl = startUrl ?? url;
+    if (content) config.content = content;
+    if (fileName) config.fileName = fileName;
+    if (fileMime) config.fileMime = fileMime;
 
     const [source] = await db.insert(sources).values({
       workspaceId: session.workspaceId,
       type,
       name,
-      config: { url, fileName, fileMime } as any,
+      config,
       status: 'pending',
     }).returning();
 

@@ -155,6 +155,52 @@ export async function updateConversationAction(
   revalidatePath('/inbox');
 }
 
+export async function kbCreateSourceAction(_prev: unknown, formData: FormData) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+
+  const type = formData.get('type') as string;
+  const name = formData.get('name') as string;
+  const startUrl = formData.get('startUrl') as string | null;
+  const content = formData.get('content') as string | null;
+
+  try {
+    const { api } = await import('./api');
+    await api.createSource(session.token, {
+      type,
+      name,
+      startUrl: startUrl || undefined,
+      content: content || undefined,
+    });
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/knowledge');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
+export async function kbDeleteSourceAction(id: string) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return;
+  const { api } = await import('./api');
+  await api.deleteKbSource(session.token, id);
+  const { revalidatePath } = await import('next/cache');
+  revalidatePath('/settings/knowledge');
+}
+
+export async function kbSyncSourceAction(id: string) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return;
+  const { api } = await import('./api');
+  await api.syncSource(session.token, id);
+  const { revalidatePath } = await import('next/cache');
+  revalidatePath('/settings/knowledge');
+}
+
 export async function inviteUserAction(_prev: unknown, formData: FormData) {
   const { getSession } = await import('./session');
   const session = await getSession();

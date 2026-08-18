@@ -5,6 +5,7 @@ import { ConversationList } from '@/components/inbox/ConversationList';
 import { MessageThread } from '@/components/inbox/MessageThread';
 import { ReplyBox } from '@/components/inbox/ReplyBox';
 import { ConversationHeader } from '@/components/inbox/ConversationHeader';
+import { InboxPoller } from '@/components/inbox/InboxPoller';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,7 @@ export default async function ConversationPage({ params }: Props) {
 
   return (
     <div className="flex h-full">
+      <InboxPoller />
       {/* Conversation list panel */}
       <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
         <div className="px-4 py-4 border-b border-gray-100">

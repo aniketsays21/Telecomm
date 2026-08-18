@@ -121,6 +121,34 @@ export const api = {
       `/inbox/conversations/${id}`,
       { method: 'PATCH', body: JSON.stringify(updates) }, token
     ),
+
+  // Knowledge base
+  listSources: (token: string) =>
+    request<{ sources: KbSource[] }>('/kb/sources', {}, token),
+
+  createSource: (token: string, body: { type: string; name: string; startUrl?: string; content?: string }) =>
+    request<{ source: KbSource }>('/kb/sources', { method: 'POST', body: JSON.stringify(body) }, token),
+
+  deleteKbSource: (token: string, id: string) =>
+    fetch(`${API}/kb/sources/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  syncSource: (token: string, id: string) =>
+    request<{ queued: boolean }>(`/kb/sources/${id}/sync`, { method: 'POST', body: '{}' }, token),
+};
+
+export type KbSource = {
+  id: string;
+  type: 'website' | 'shopify' | 'file' | 'manual' | 'api';
+  name: string;
+  status: 'pending' | 'syncing' | 'ready' | 'error';
+  docCount: number;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  config: Record<string, unknown>;
 };
 
 export type ConversationSummary = {
