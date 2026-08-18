@@ -201,6 +201,65 @@ export async function kbSyncSourceAction(id: string) {
   revalidatePath('/settings/knowledge');
 }
 
+export async function updateWidgetSettingsAction(
+  _prev: unknown,
+  formData: FormData
+): Promise<{ success?: boolean; error?: string }> {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+
+  const color = formData.get('widgetColor') as string | null;
+  const greeting = formData.get('widgetGreeting') as string | null;
+  const botName = formData.get('botName') as string | null;
+  const position = formData.get('widgetPosition') as string | null;
+
+  try {
+    const { api } = await import('./api');
+    await api.updateWorkspaceSettings(session.token, {
+      ...(color ? { widgetColor: color } : {}),
+      ...(greeting ? { widgetGreeting: greeting } : {}),
+      ...(botName ? { botName } : {}),
+      ...(position ? { widgetPosition: position as 'bottom-right' | 'bottom-left' } : {}),
+    });
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/widget');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
+export async function cannedCreateAction(_prev: unknown, formData: FormData) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+
+  const title = formData.get('title') as string;
+  const body = formData.get('body') as string;
+  const shortcut = formData.get('shortcut') as string | null;
+
+  try {
+    const { api } = await import('./api');
+    await api.createCannedResponse(session.token, { title, body, shortcut: shortcut || undefined });
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/canned');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
+export async function cannedDeleteAction(id: string) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return;
+  const { api } = await import('./api');
+  await api.deleteCannedResponse(session.token, id);
+  const { revalidatePath } = await import('next/cache');
+  revalidatePath('/settings/canned');
+}
+
 export async function inviteUserAction(_prev: unknown, formData: FormData) {
   const { getSession } = await import('./session');
   const session = await getSession();

@@ -4,6 +4,7 @@ import { eq, and, desc, sql } from 'drizzle-orm';
 import { db } from '@telecomm/db';
 import { conversations, messages, contacts, users } from '@telecomm/db/schema';
 import { requireAuth } from '../../middleware/auth.js';
+import { broadcastToWorkspace } from '../ws/index.js';
 
 export async function inboxRoutes(app: FastifyInstance) {
   // GET /inbox/conversations?status=open&limit=25&cursor=<id>
@@ -124,6 +125,9 @@ export async function inboxRoutes(app: FastifyInstance) {
         firstResponseAt: conv.firstResponseAt ?? new Date(),
       }).where(eq(conversations.id, id));
     }
+
+    // Broadcast to all dashboard clients connected to this workspace
+    broadcastToWorkspace(session.workspaceId, { type: 'message', conversationId: id, message: msg });
 
     return msg;
   });

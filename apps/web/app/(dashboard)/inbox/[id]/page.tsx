@@ -5,7 +5,8 @@ import { ConversationList } from '@/components/inbox/ConversationList';
 import { MessageThread } from '@/components/inbox/MessageThread';
 import { ReplyBox } from '@/components/inbox/ReplyBox';
 import { ConversationHeader } from '@/components/inbox/ConversationHeader';
-import { InboxPoller } from '@/components/inbox/InboxPoller';
+import { RealtimeInbox } from '@/components/inbox/RealtimeInbox';
+import { ContactSidebar } from '@/components/inbox/ContactSidebar';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,9 +17,10 @@ export default async function ConversationPage({ params }: Props) {
   const session = await getSession();
   if (!session) return null;
 
-  const [listResult, threadResult] = await Promise.allSettled([
+  const [listResult, threadResult, cannedResult] = await Promise.allSettled([
     api.listConversations(session.token, { status: 'open', limit: 30 }),
     api.getConversation(session.token, id),
+    api.listCannedResponses(session.token),
   ]);
 
   if (threadResult.status === 'rejected') notFound();
@@ -28,10 +30,11 @@ export default async function ConversationPage({ params }: Props) {
     : { conversations: [], hasMore: false };
 
   const { conversation, contact, messages } = threadResult.value;
+  const cannedResponses = cannedResult.status === 'fulfilled' ? cannedResult.value.responses : [];
 
   return (
     <div className="flex h-full">
-      <InboxPoller />
+      <RealtimeInbox token={session.token} />
       {/* Conversation list panel */}
       <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
         <div className="px-4 py-4 border-b border-gray-100">
@@ -52,8 +55,12 @@ export default async function ConversationPage({ params }: Props) {
         <ReplyBox
           conversationId={id}
           status={conversation.status}
+          cannedResponses={cannedResponses}
         />
       </div>
+
+      {/* Contact/conversation details sidebar */}
+      <ContactSidebar contact={contact} conversation={conversation} />
     </div>
   );
 }

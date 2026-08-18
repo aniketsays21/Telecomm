@@ -7,6 +7,7 @@ import { embedQuery, generateAnswer } from '@telecomm/ai';
 import { searchChunks } from '../../lib/search.js';
 import { Queue } from 'bullmq';
 import { QUEUES } from '@telecomm/shared';
+import { broadcastToWorkspace } from '../ws/index.js';
 
 const redisConnection = {
   host: process.env.REDIS_HOST ?? 'localhost',
@@ -114,14 +115,15 @@ export async function chatRoutes(app: FastifyInstance) {
       }
 
       // Save AI reply message
-      await db.insert(messages).values({
+      const [aiMsg] = await db.insert(messages).values({
         conversationId: conversation.id,
         workspaceId,
         authorType: 'ai',
         body: replyText,
         aiConfidence,
         aiSources: aiAnswer.sources,
-      });
+      }).returning();
+      broadcastToWorkspace(workspaceId, { type: 'message', conversationId: conversation.id, message: aiMsg });
 
     } catch (err: any) {
       // AI unavailable — escalate gracefully

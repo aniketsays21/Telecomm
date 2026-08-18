@@ -12,6 +12,7 @@ interface Msg {
 interface Props {
   workspaceId: string;
   apiUrl: string;
+  greeting?: string;
 }
 
 function fmt() {
@@ -47,10 +48,10 @@ const SendIcon = () => (
   </svg>
 );
 
-export function Widget({ workspaceId, apiUrl }: Props) {
+export function Widget({ workspaceId, apiUrl, greeting }: Props) {
   const [open, setOpen] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([
-    { id: '0', role: 'bot', body: 'Hi! How can I help you today?', time: fmt() },
+    { id: '0', role: 'bot', body: greeting || 'Hi! How can I help you today?', time: fmt() },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);

@@ -137,6 +137,31 @@ export const api = {
 
   syncSource: (token: string, id: string) =>
     request<{ queued: boolean }>(`/kb/sources/${id}/sync`, { method: 'POST', body: '{}' }, token),
+
+  // Workspace settings
+  getWorkspace: (token: string) =>
+    request<WorkspaceData>('/workspaces/current', {}, token),
+
+  updateWorkspaceSettings: (token: string, settings: Partial<WorkspaceSettings>) =>
+    request<WorkspaceData>('/workspaces/current', {
+      method: 'PATCH',
+      body: JSON.stringify({ settings }),
+    }, token),
+
+  // Canned responses
+  listCannedResponses: (token: string) =>
+    request<{ responses: CannedResponse[] }>('/canned-responses', {}, token),
+
+  createCannedResponse: (token: string, body: { title: string; body: string; shortcut?: string }) =>
+    request<{ response: CannedResponse }>('/canned-responses', {
+      method: 'POST', body: JSON.stringify(body),
+    }, token),
+
+  deleteCannedResponse: (token: string, id: string) =>
+    fetch(`${API}/canned-responses/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }),
 };
 
 export type KbSource = {
@@ -191,5 +216,30 @@ export type Message = {
   isInternalNote: boolean;
   aiConfidence: string | null;
   aiSources: unknown[];
+  createdAt: string;
+};
+
+export type WorkspaceSettings = {
+  widgetColor?: string;
+  widgetPosition?: 'bottom-right' | 'bottom-left';
+  widgetGreeting?: string;
+  botName?: string;
+  escalationThreshold?: 'cautious' | 'balanced' | 'confident';
+};
+
+export type WorkspaceData = {
+  id: string;
+  name: string;
+  slug: string;
+  settings: WorkspaceSettings;
+  inboundEmail: string | null;
+};
+
+export type CannedResponse = {
+  id: string;
+  title: string;
+  body: string;
+  shortcut: string | null;
+  tags: string[] | null;
   createdAt: string;
 };

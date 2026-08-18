@@ -8,18 +8,18 @@ export const CSS = `
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    background: #4f46e5;
+    background: var(--tc-color, #4f46e5);
     color: #fff;
     border: none;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 18px rgba(79,70,229,0.45);
+    box-shadow: 0 4px 18px var(--tc-shadow, rgba(79,70,229,0.45));
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     z-index: 2147483647;
   }
-  #tc-launcher:hover { transform: scale(1.07); box-shadow: 0 6px 22px rgba(79,70,229,0.55); }
+  #tc-launcher:hover { transform: scale(1.07); box-shadow: 0 6px 22px var(--tc-shadow-lg, rgba(79,70,229,0.55)); }
 
   #tc-window {
     position: fixed;
@@ -39,7 +39,7 @@ export const CSS = `
   #tc-window.tc-hidden { opacity: 0; pointer-events: none; transform: translateY(10px); }
 
   #tc-header {
-    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    background: var(--tc-gradient, linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%));
     color: #fff;
     padding: 16px 18px;
     display: flex;
@@ -91,7 +91,7 @@ export const CSS = `
     word-break: break-word;
   }
   .tc-user .tc-bubble {
-    background: #4f46e5;
+    background: var(--tc-color, #4f46e5);
     color: #fff;
     border-radius: 14px 14px 4px 14px;
   }
@@ -167,12 +167,12 @@ export const CSS = `
     background: #f9fafb;
     transition: border-color 0.15s;
   }
-  #tc-input-area textarea:focus { border-color: #4f46e5; background: #fff; }
+  #tc-input-area textarea:focus { border-color: var(--tc-color, #4f46e5); background: #fff; }
   #tc-input-area textarea::placeholder { color: #9ca3af; }
   #tc-input-area textarea:disabled { opacity: 0.5; }
 
   #tc-send {
-    background: #4f46e5;
+    background: var(--tc-color, #4f46e5);
     color: #fff;
     border: none;
     border-radius: 10px;
@@ -183,10 +183,10 @@ export const CSS = `
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: background 0.15s;
+    transition: filter 0.15s;
   }
-  #tc-send:hover { background: #4338ca; }
-  #tc-send:disabled { background: #c7d2fe; cursor: not-allowed; }
+  #tc-send:hover { filter: brightness(0.88); }
+  #tc-send:disabled { background: var(--tc-highlight, #c7d2fe); cursor: not-allowed; filter: none; }
 
   #tc-footer {
     font-size: 10px;
