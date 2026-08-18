@@ -4,6 +4,15 @@ import { eq } from 'drizzle-orm';
 import { db } from '@telecomm/db';
 import { workspaces, sources } from '@telecomm/db/schema';
 import { requireAuth } from '../../middleware/auth.js';
+import { Queue } from 'bullmq';
+import { QUEUES } from '@telecomm/shared';
+
+const ingestQueue = new Queue(QUEUES.INGEST, {
+  connection: {
+    host: process.env.REDIS_HOST ?? 'localhost',
+    port: Number(process.env.REDIS_PORT ?? 6379),
+  },
+});
 
 // Inbound email address for a workspace: support-{slug}@inbound.telecomm.io
 function inboundAddress(slug: string) {
@@ -94,6 +103,12 @@ export async function onboardingRoutes(app: FastifyInstance) {
       onboardingState: { ...((ws.onboardingState as object) ?? {}), sourcesConnected: true } as any,
       updatedAt: new Date(),
     }).where(eq(workspaces.id, session.workspaceId));
+
+    // Kick off ingestion immediately
+    await ingestQueue.add('ingest-source', { sourceId: source.id }, {
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+    });
 
     return { source };
   });

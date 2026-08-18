@@ -1,20 +1,33 @@
 import { getSession } from '@/lib/session';
+import { api } from '@/lib/api';
+import { ConversationList } from '@/components/inbox/ConversationList';
+
+export const dynamic = 'force-dynamic';
 
 export default async function InboxPage() {
   const session = await getSession();
+  if (!session) return null;
+
+  const { conversations, hasMore } = await api.listConversations(session.token, { status: 'open', limit: 30 });
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Inbox</h1>
-      <p className="text-gray-500 mb-8">Conversations will appear here once the chat widget and email channel are connected.</p>
-      <div className="bg-white rounded-xl border border-gray-200 p-12 text-center">
-        <div className="text-4xl mb-3">💬</div>
-        <h2 className="text-lg font-semibold text-gray-700 mb-1">No conversations yet</h2>
-        <p className="text-sm text-gray-500">
-          {session?.role === 'admin'
-            ? 'Set up your knowledge base and paste the widget on your site to start receiving messages.'
-            : 'Conversations assigned to you will appear here.'}
-        </p>
+    <div className="flex h-full">
+      {/* Conversation list panel */}
+      <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
+        <div className="px-4 py-4 border-b border-gray-100">
+          <h1 className="text-base font-semibold text-gray-900">Inbox</h1>
+          <p className="text-xs text-gray-400 mt-0.5">{conversations.length} open conversation{conversations.length !== 1 ? 's' : ''}</p>
+        </div>
+        <ConversationList conversations={conversations} hasMore={hasMore} />
+      </div>
+
+      {/* Empty state when no conversation selected */}
+      <div className="flex-1 flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="text-5xl mb-4">💬</div>
+          <h2 className="text-lg font-semibold text-gray-700 mb-1">Select a conversation</h2>
+          <p className="text-sm text-gray-400">Click on a conversation to view messages and reply.</p>
+        </div>
       </div>
     </div>
   );

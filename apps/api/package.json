@@ -14,6 +14,7 @@
     "@fastify/rate-limit": "^10.2.2",
     "@fastify/session": "^11.1.2",
     "@fastify/websocket": "^11.0.2",
+    "@telecomm/ai": "workspace:*",
     "@telecomm/db": "workspace:*",
     "@telecomm/shared": "workspace:*",
     "bullmq": "^5.41.1",

@@ -32,6 +32,9 @@ importers:
       '@fastify/websocket':
         specifier: ^11.0.2
         version: 11.3.0
+      '@telecomm/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@telecomm/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -146,6 +149,9 @@ importers:
       '@telecomm/shared':
         specifier: workspace:*
         version: link:../shared
+      drizzle-orm:
+        specifier: ^0.38.4
+        version: 0.38.4(@types/react@19.2.18)(postgres@3.4.9)(react@19.2.8)
     devDependencies:
       typescript:
         specifier: ^5.7.0

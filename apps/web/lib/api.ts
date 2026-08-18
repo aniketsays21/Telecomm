@@ -87,4 +87,81 @@ export const api = {
 
   completeOnboarding: (token: string) =>
     request<{ ok: boolean; isLive: boolean }>('/onboarding/complete', { method: 'POST', body: '{}' }, token),
+
+  // Inbox
+  listConversations: (token: string, params?: { status?: string; limit?: number; cursor?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set('status', params.status);
+    if (params?.limit) qs.set('limit', String(params.limit));
+    if (params?.cursor) qs.set('cursor', params.cursor);
+    return request<{
+      conversations: ConversationSummary[];
+      hasMore: boolean;
+    }>(`/inbox/conversations?${qs}`, {}, token);
+  },
+
+  getConversation: (token: string, id: string) =>
+    request<{ conversation: Conversation; contact: Contact; messages: Message[] }>(
+      `/inbox/conversations/${id}`, {}, token
+    ),
+
+  sendMessage: (token: string, conversationId: string, body: { body: string; isInternalNote?: boolean }) =>
+    request<Message>(
+      `/inbox/conversations/${conversationId}/messages`,
+      { method: 'POST', body: JSON.stringify(body) }, token
+    ),
+
+  updateConversation: (token: string, id: string, updates: {
+    status?: 'open' | 'snoozed' | 'resolved';
+    assigneeId?: string | null;
+    priority?: number;
+    tags?: string[];
+  }) =>
+    request<Conversation>(
+      `/inbox/conversations/${id}`,
+      { method: 'PATCH', body: JSON.stringify(updates) }, token
+    ),
+};
+
+export type ConversationSummary = {
+  id: string;
+  status: 'open' | 'snoozed' | 'resolved';
+  channel: 'chat' | 'email';
+  subject: string | null;
+  aiHandled: boolean;
+  escalatedAt: string | null;
+  escalationReason: string | null;
+  lastMessageAt: string;
+  createdAt: string;
+  contact: { id: string; name: string | null; email: string | null };
+  assigneeId: string | null;
+  priority: number;
+  sentiment: string | null;
+  tags: string[];
+};
+
+export type Conversation = ConversationSummary & {
+  contactId: string;
+};
+
+export type Contact = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  externalId: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+};
+
+export type Message = {
+  id: string;
+  conversationId: string;
+  workspaceId: string;
+  authorType: 'contact' | 'agent' | 'ai' | 'system';
+  authorId: string | null;
+  body: string;
+  isInternalNote: boolean;
+  aiConfidence: string | null;
+  aiSources: unknown[];
+  createdAt: string;
 };

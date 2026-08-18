@@ -131,6 +131,30 @@ export async function completeOnboardingAction() {
   redirect('/inbox');
 }
 
+export async function sendMessageAction(conversationId: string, body: string, isInternalNote = false) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return;
+  const { api } = await import('./api');
+  await api.sendMessage(session.token, conversationId, { body, isInternalNote });
+  const { revalidatePath } = await import('next/cache');
+  revalidatePath(`/inbox/${conversationId}`);
+}
+
+export async function updateConversationAction(
+  conversationId: string,
+  updates: { status?: 'open' | 'snoozed' | 'resolved'; assigneeId?: string | null; tags?: string[] }
+) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return;
+  const { api } = await import('./api');
+  await api.updateConversation(session.token, conversationId, updates);
+  const { revalidatePath } = await import('next/cache');
+  revalidatePath(`/inbox/${conversationId}`);
+  revalidatePath('/inbox');
+}
+
 export async function inviteUserAction(_prev: unknown, formData: FormData) {
   const { getSession } = await import('./session');
   const session = await getSession();
