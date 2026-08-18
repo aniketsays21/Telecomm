@@ -1,0 +1,36 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: telecomm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: telecomm
+      POSTGRES_PASSWORD: telecomm
+      POSTGRES_DB: telecomm
+    ports:
+      - "5432:5432"
+    volumes:
+      - telecomm_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U telecomm"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: telecomm-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - telecomm_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  telecomm_postgres_data:
+  telecomm_redis_data:

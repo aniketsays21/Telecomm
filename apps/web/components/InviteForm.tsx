@@ -1,0 +1,70 @@
+'use client';
+
+import { useState } from 'react';
+import { useActionState } from 'react';
+import { useFormStatus } from 'react-dom';
+import { inviteUserAction } from '@/lib/actions';
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-sm font-medium rounded-lg transition-colors"
+    >
+      {pending ? 'Sending…' : 'Send invite'}
+    </button>
+  );
+}
+
+export function InviteForm() {
+  const [state, formAction] = useActionState(inviteUserAction, undefined);
+
+  return (
+    <form action={formAction} className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+          <input
+            name="name"
+            type="text"
+            required
+            minLength={2}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="Jane Smith"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+          <input
+            name="email"
+            type="email"
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="jane@company.com"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
+        <select
+          name="role"
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+          <option value="agent">Agent</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      {state && 'error' in state && (
+        <p className="text-sm text-red-600">{state.error}</p>
+      )}
+      {state && 'success' in state && (
+        <div className="text-sm text-green-700 bg-green-50 px-3 py-2 rounded-lg">
+          Invite sent! Link: <span className="font-mono break-all">{state.inviteLink}</span>
+        </div>
+      )}
+      <SubmitButton />
+    </form>
+  );
+}

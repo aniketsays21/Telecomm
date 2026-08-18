@@ -1,0 +1,32 @@
+{
+  "name": "@telecomm/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=../../.env src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.1",
+    "@fastify/cors": "^10.0.1",
+    "@fastify/rate-limit": "^10.2.2",
+    "@fastify/session": "^11.1.2",
+    "@fastify/websocket": "^11.0.2",
+    "@telecomm/db": "workspace:*",
+    "@telecomm/shared": "workspace:*",
+    "bullmq": "^5.41.1",
+    "drizzle-orm": "^0.38.4",
+    "fastify": "^5.2.1",
+    "fastify-plugin": "^6.0.0",
+    "ioredis": "^5.4.1",
+    "jose": "^5.10.0",
+    "postgres": "^3.4.9",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0"
+  }
+}
