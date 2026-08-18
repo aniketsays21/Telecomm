@@ -4,7 +4,8 @@ import { redirect } from 'next/navigation';
 import { api } from './api';
 import { setSession, clearSession } from './session';
 
-export async function signupAction(formData: FormData) {
+// useActionState passes (prevState, formData) — prevState is first arg
+export async function signupAction(_prev: unknown, formData: FormData) {
   const name = formData.get('name') as string;
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
@@ -26,7 +27,7 @@ export async function signupAction(formData: FormData) {
   redirect('/inbox');
 }
 
-export async function loginAction(formData: FormData) {
+export async function loginAction(_prev: unknown, formData: FormData) {
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
 
@@ -46,7 +47,7 @@ export async function loginAction(formData: FormData) {
   redirect('/inbox');
 }
 
-export async function acceptInviteAction(token: string, formData: FormData) {
+export async function acceptInviteAction(token: string, _prev: unknown, formData: FormData) {
   const name = formData.get('name') as string;
   const password = formData.get('password') as string;
 
@@ -71,7 +72,7 @@ export async function logoutAction() {
   redirect('/login');
 }
 
-export async function inviteUserAction(formData: FormData) {
+export async function inviteUserAction(_prev: unknown, formData: FormData) {
   const { getSession } = await import('./session');
   const session = await getSession();
   if (!session) return { error: 'Not authenticated' };

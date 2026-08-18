@@ -17,7 +17,7 @@ function SubmitButton({ label }: { label: string }) {
 }
 
 type Props = {
-  action: (formData: FormData) => Promise<{ error: string } | void>;
+  action: (prev: unknown, formData: FormData) => Promise<{ error: string } | void>;
   submitLabel: string;
   children: React.ReactNode;
 };
