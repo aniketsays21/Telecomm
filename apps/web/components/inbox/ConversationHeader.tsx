@@ -5,12 +5,15 @@ import { useRouter } from 'next/navigation';
 import type { Conversation, Contact } from '@/lib/api';
 import { updateConversationAction } from '@/lib/actions';
 
+type Agent = { id: string; name: string; email: string };
+
 type Props = {
   conversation: Conversation;
   contact: Contact;
+  agents?: Agent[];
 };
 
-export function ConversationHeader({ conversation, contact }: Props) {
+export function ConversationHeader({ conversation, contact, agents = [] }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -22,7 +25,12 @@ export function ConversationHeader({ conversation, contact }: Props) {
     startTransition(async () => { await updateConversationAction(conversation.id, { status: 'open' }); router.refresh(); });
   }
 
+  function assign(agentId: string | null) {
+    startTransition(async () => { await updateConversationAction(conversation.id, { assigneeId: agentId }); router.refresh(); });
+  }
+
   const isEscalated = !conversation.aiHandled && !!conversation.escalatedAt;
+  const assignedAgent = agents.find(a => a.id === conversation.assigneeId);
 
   return (
     <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 bg-white">
@@ -34,7 +42,7 @@ export function ConversationHeader({ conversation, contact }: Props) {
           <p className="text-sm font-semibold text-gray-900">
             {contact.name ?? contact.email ?? 'Unknown visitor'}
           </p>
-          <div className="flex items-center gap-2 mt-0.5">
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
             {contact.email && (
               <span className="text-xs text-gray-400">{contact.email}</span>
             )}
@@ -60,6 +68,21 @@ export function ConversationHeader({ conversation, contact }: Props) {
       </div>
 
       <div className="flex items-center gap-2">
+        {/* Assignee dropdown */}
+        {agents.length > 0 && (
+          <select
+            value={conversation.assigneeId ?? ''}
+            onChange={e => assign(e.target.value || null)}
+            disabled={isPending}
+            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 focus:outline-none focus:border-indigo-400 bg-white"
+          >
+            <option value="">Unassigned</option>
+            {agents.map(a => (
+              <option key={a.id} value={a.id}>{a.name || a.email}</option>
+            ))}
+          </select>
+        )}
+
         {conversation.status !== 'resolved' ? (
           <button
             onClick={resolve}

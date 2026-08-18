@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, or, ilike } from 'drizzle-orm';
 import { db } from '@telecomm/db';
 import { conversations, messages, contacts, users } from '@telecomm/db/schema';
 import { requireAuth } from '../../middleware/auth.js';
 import { broadcastToWorkspace } from '../ws/index.js';
+import { sendMail, isEmailConfigured } from '../../lib/mailer.js';
 
 export async function inboxRoutes(app: FastifyInstance) {
   // GET /inbox/conversations?status=open&limit=25&cursor=<id>
@@ -13,10 +14,31 @@ export async function inboxRoutes(app: FastifyInstance) {
     if (!session) return;
 
     const query = z.object({
-      status: z.enum(['open', 'snoozed', 'resolved']).default('open'),
+      status: z.enum(['open', 'snoozed', 'resolved', 'all']).default('open'),
+      channel: z.enum(['chat', 'email']).optional(),
+      assigneeId: z.string().uuid().optional(),
+      q: z.string().max(200).optional(),
       limit: z.coerce.number().min(1).max(50).default(25),
       cursor: z.string().uuid().optional(),
     }).parse(request.query);
+
+    const filters = [
+      eq(conversations.workspaceId, session.workspaceId),
+      query.status !== 'all' ? eq(conversations.status, query.status as any) : undefined,
+      query.channel ? eq(conversations.channel, query.channel) : undefined,
+      query.assigneeId ? eq(conversations.assigneeId, query.assigneeId) : undefined,
+      query.cursor
+        ? sql`${conversations.lastMessageAt} < (SELECT last_message_at FROM conversations WHERE id = ${query.cursor}::uuid)`
+        : undefined,
+      // Full-text search: match contact name, email, or subject
+      query.q
+        ? or(
+            ilike(contacts.name, `%${query.q}%`),
+            ilike(contacts.email, `%${query.q}%`),
+            ilike(conversations.subject, `%${query.q}%`),
+          )
+        : undefined,
+    ].filter(Boolean) as any[];
 
     const rows = await db
       .select({
@@ -41,14 +63,7 @@ export async function inboxRoutes(app: FastifyInstance) {
       })
       .from(conversations)
       .innerJoin(contacts, eq(contacts.id, conversations.contactId))
-      .where(and(
-        eq(conversations.workspaceId, session.workspaceId),
-        eq(conversations.status, query.status),
-        // cursor-based pagination
-        query.cursor
-          ? sql`${conversations.lastMessageAt} < (SELECT last_message_at FROM conversations WHERE id = ${query.cursor}::uuid)`
-          : undefined,
-      ))
+      .where(and(...filters))
       .orderBy(desc(conversations.lastMessageAt))
       .limit(query.limit);
 
@@ -110,6 +125,14 @@ export async function inboxRoutes(app: FastifyInstance) {
 
     if (!conv) return reply.code(404).send({ error: 'Not found' });
 
+    // Fetch contact for email replies
+    const contactRows = await db
+      .select({ email: contacts.email, name: contacts.name })
+      .from(contacts)
+      .where(eq(contacts.id, conv.contactId))
+      .limit(1);
+    const contact = contactRows[0];
+
     const [msg] = await db.insert(messages).values({
       conversationId: id,
       workspaceId: session.workspaceId,
@@ -124,6 +147,21 @@ export async function inboxRoutes(app: FastifyInstance) {
         lastMessageAt: new Date(),
         firstResponseAt: conv.firstResponseAt ?? new Date(),
       }).where(eq(conversations.id, id));
+    }
+
+    // Send email reply if this is an email conversation and SMTP is configured
+    if (!body.data.isInternalNote && conv.channel === 'email' && contact?.email && isEmailConfigured()) {
+      try {
+        await sendMail({
+          to: contact.email,
+          subject: conv.subject ? `Re: ${conv.subject}` : 'Re: Your support request',
+          text: body.data.body,
+          inReplyTo: conv.emailThreadId ?? undefined,
+          references: conv.emailThreadId ?? undefined,
+        });
+      } catch (err: any) {
+        app.log.error({ err }, 'Failed to send email reply');
+      }
     }
 
     // Broadcast to all dashboard clients connected to this workspace

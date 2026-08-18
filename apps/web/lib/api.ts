@@ -89,9 +89,12 @@ export const api = {
     request<{ ok: boolean; isLive: boolean }>('/onboarding/complete', { method: 'POST', body: '{}' }, token),
 
   // Inbox
-  listConversations: (token: string, params?: { status?: string; limit?: number; cursor?: string }) => {
+  listConversations: (token: string, params?: { status?: string; channel?: string; assigneeId?: string; q?: string; limit?: number; cursor?: string }) => {
     const qs = new URLSearchParams();
     if (params?.status) qs.set('status', params.status);
+    if (params?.channel) qs.set('channel', params.channel);
+    if (params?.assigneeId) qs.set('assigneeId', params.assigneeId);
+    if (params?.q) qs.set('q', params.q);
     if (params?.limit) qs.set('limit', String(params.limit));
     if (params?.cursor) qs.set('cursor', params.cursor);
     return request<{
@@ -137,6 +140,10 @@ export const api = {
 
   syncSource: (token: string, id: string) =>
     request<{ queued: boolean }>(`/kb/sources/${id}/sync`, { method: 'POST', body: '{}' }, token),
+
+  // Analytics
+  getAnalytics: (token: string, days = 30) =>
+    request<AnalyticsData>(`/analytics?days=${days}`, {}, token),
 
   // Workspace settings
   getWorkspace: (token: string) =>
@@ -217,6 +224,23 @@ export type Message = {
   aiConfidence: string | null;
   aiSources: unknown[];
   createdAt: string;
+};
+
+export type AnalyticsData = {
+  period: { days: number; since: string };
+  summary: {
+    total: number;
+    openNow: number;
+    escalated: number;
+    aiResolved: number;
+    agentResolved: number;
+    escalationRate: number;
+    aiResolutionRate: number;
+    avgFirstResponseMs: number | null;
+  };
+  daily: Array<{ day: string; conversations: number; escalations: number }>;
+  topEscalationReasons: Array<{ reason: string; count: number }>;
+  channelSplit: Array<{ channel: string; count: number }>;
 };
 
 export type WorkspaceSettings = {

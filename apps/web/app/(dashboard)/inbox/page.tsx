@@ -1,15 +1,22 @@
 import { getSession } from '@/lib/session';
 import { api } from '@/lib/api';
 import { ConversationList } from '@/components/inbox/ConversationList';
+import { InboxFilters } from '@/components/inbox/InboxFilters';
 import { RealtimeInbox } from '@/components/inbox/RealtimeInbox';
 
 export const dynamic = 'force-dynamic';
 
-export default async function InboxPage() {
+type Props = { searchParams: Promise<{ status?: string; channel?: string; q?: string }> };
+
+export default async function InboxPage({ searchParams }: Props) {
   const session = await getSession();
   if (!session) return null;
 
-  const { conversations, hasMore } = await api.listConversations(session.token, { status: 'open', limit: 30 });
+  const { status = 'open', channel, q } = await searchParams;
+
+  const { conversations, hasMore } = await api.listConversations(session.token, {
+    status, channel, q, limit: 30,
+  });
 
   return (
     <div className="flex h-full">
@@ -18,8 +25,9 @@ export default async function InboxPage() {
       <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
         <div className="px-4 py-4 border-b border-gray-100">
           <h1 className="text-base font-semibold text-gray-900">Inbox</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{conversations.length} open conversation{conversations.length !== 1 ? 's' : ''}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{conversations.length} conversation{conversations.length !== 1 ? 's' : ''}</p>
         </div>
+        <InboxFilters />
         <ConversationList conversations={conversations} hasMore={hasMore} />
       </div>
 

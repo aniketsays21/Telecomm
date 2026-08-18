@@ -16,6 +16,7 @@ const agentNav = [
 
 const adminNav = [
   { href: '/inbox', label: 'Inbox' },
+  { href: '/analytics', label: 'Analytics' },
   { href: '/settings', label: 'Settings' },
   { href: '/settings/team', label: 'Team' },
   { href: '/settings/knowledge', label: 'Knowledge Base' },
