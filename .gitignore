@@ -16,6 +16,9 @@ dist/
 # Database
 packages/db/drizzle/
 
+# Redis
+dump.rdb
+
 # Editor
 .vscode/
 .idea/
