@@ -16,13 +16,15 @@ WORKDIR /app
 FROM base AS deps
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY apps/api/package.json ./apps/api/
+COPY apps/widget/package.json ./apps/widget/
 COPY packages/db/package.json ./packages/db/
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/ai/package.json ./packages/ai/
 # `--filter @telecomm/api...` installs the API package and every workspace
-# dependency it transitively needs. --frozen-lockfile guarantees identical
-# versions to CI/local.
-RUN pnpm install --frozen-lockfile --filter @telecomm/api...
+# dependency it transitively needs. `--filter @telecomm/widget` adds the
+# embeddable chat widget so we can build its bundle and serve it from the API
+# at /widget.js. --frozen-lockfile guarantees identical versions to CI/local.
+RUN pnpm install --frozen-lockfile --filter @telecomm/api... --filter @telecomm/widget
 
 # ---------- build ----------
 # tsconfig.base.json (line: COPY tsconfig.base.json ./) is required — the API
@@ -32,9 +34,14 @@ FROM deps AS builder
 COPY tsconfig.base.json ./
 COPY packages/ ./packages/
 COPY apps/api/ ./apps/api/
-# Runs `tsc --noEmit` (type gate) then esbuild, producing apps/api/dist/index.js
-# with @telecomm/* workspace source inlined. Every real npm dependency stays
-# external and is resolved from node_modules at runtime.
+COPY apps/widget/ ./apps/widget/
+# Build widget FIRST so its dist/widget.js exists before the API bundle is
+# assembled — the API's /widget.js route reads that file off disk at runtime,
+# so it must be present in the runner image.
+RUN pnpm --filter @telecomm/widget build
+# Then build the API: `tsc --noEmit` type gate + esbuild bundle at
+# apps/api/dist/index.js with @telecomm/* workspace source inlined. Every real
+# npm dependency stays external and is resolved from node_modules at runtime.
 RUN pnpm --filter @telecomm/api build
 
 # ---------- prune ----------
@@ -63,6 +70,9 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=prod-deps /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+# The API serves /widget.js by reading this file at request time; leaving it
+# out is what made the settings-page live preview show "widget load failed".
+COPY --from=builder /app/apps/widget/dist ./apps/widget/dist
 
 # Run as a non-root user; node:20-alpine ships the `node` user for exactly this.
 USER node

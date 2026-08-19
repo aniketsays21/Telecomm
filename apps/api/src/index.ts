@@ -21,7 +21,9 @@ import { startWorkers } from './workers/index.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const WIDGET_PATH = join(__dirname, '..', '..', '..', 'widget', 'dist', 'widget.js');
+// __dirname resolves to apps/api/dist at runtime. The compiled widget lives at
+// apps/widget/dist/widget.js, so we go up two levels then across, not three.
+const WIDGET_PATH = join(__dirname, '..', '..', 'widget', 'dist', 'widget.js');
 
 async function build() {
   const app = Fastify({ logger: { level: 'info' } });
