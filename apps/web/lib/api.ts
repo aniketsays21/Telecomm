@@ -318,6 +318,10 @@ export type WorkspaceSettings = {
   widgetPosition?: 'bottom-right' | 'bottom-left';
   widgetGreeting?: string;
   botName?: string;
+  // Public URL of the customer's site — used only by the settings preview so
+  // admins can see the widget floating over their own page. Not read by the
+  // widget script at runtime.
+  widgetPreviewUrl?: string;
   escalationThreshold?: 'cautious' | 'balanced' | 'confident';
   defaultSlaChat?: number;  // seconds
   defaultSlaEmail?: number; // seconds

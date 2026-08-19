@@ -27,6 +27,7 @@ export function WidgetSettings({ settings, workspaceId }: Props) {
   const currentColor = settings.widgetColor ?? '#4f46e5';
   const currentGreeting = settings.widgetGreeting ?? '';
   const currentBotName = settings.botName ?? '';
+  const currentPreviewUrl = settings.widgetPreviewUrl ?? '';
 
   return (
     <form action={action} className="space-y-6">
@@ -106,6 +107,23 @@ export function WidgetSettings({ settings, workspaceId }: Props) {
           placeholder="Support Chat"
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
+      </div>
+
+      <div>
+        <label htmlFor="widgetPreviewUrl" className="block text-sm font-medium text-gray-700 mb-1">
+          Preview on your website
+        </label>
+        <input
+          id="widgetPreviewUrl"
+          name="widgetPreviewUrl"
+          type="url"
+          defaultValue={currentPreviewUrl}
+          placeholder="https://yourstore.com"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+        <p className="text-xs text-gray-400 mt-1">
+          Paste your site URL and save. The Live Preview above will render your page with the widget floating over it — the same experience your visitors will see.
+        </p>
       </div>
 
       <div>

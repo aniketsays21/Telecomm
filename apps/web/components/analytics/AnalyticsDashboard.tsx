@@ -46,6 +46,123 @@ function Stat({
   );
 }
 
+// A minimal, editorial pie/donut chart. Two-tone palette drawn from the
+// design system tokens so it matches the rest of the page. Legend printed
+// beneath the chart to keep the ring itself clean.
+function ChannelPie({ data }: { data: AnalyticsData['channelSplit'] }) {
+  const total = data.reduce((sum, d) => sum + d.count, 0);
+  if (total === 0) {
+    return (
+      <p className="text-sm py-12 text-center italic" style={{ color: 'var(--dust)' }}>
+        No conversations in this period.
+      </p>
+    );
+  }
+
+  // Palette: chat = forest, email = ink, other = ash. Kept intentionally
+  // small — this is a two-channel product for now.
+  const paletteFor = (channel: string): string => {
+    const c = channel.toLowerCase();
+    if (c === 'chat') return 'var(--forest)';
+    if (c === 'email') return 'var(--ink)';
+    return 'var(--ash)';
+  };
+
+  const R_OUTER = 90;
+  const R_INNER = 58;
+  const CX = 110;
+  const CY = 110;
+
+  // Special-case a single slice: an arc from 0→2π is a no-op in SVG, so
+  // draw a full ring instead.
+  const only = data.length === 1;
+  let acc = 0;
+  const slices = data.map((d) => {
+    const frac = d.count / total;
+    const start = acc;
+    const end = acc + frac;
+    acc = end;
+    const startAng = start * 2 * Math.PI - Math.PI / 2;
+    const endAng = end * 2 * Math.PI - Math.PI / 2;
+    const largeArc = frac > 0.5 ? 1 : 0;
+    const x1 = CX + R_OUTER * Math.cos(startAng);
+    const y1 = CY + R_OUTER * Math.sin(startAng);
+    const x2 = CX + R_OUTER * Math.cos(endAng);
+    const y2 = CY + R_OUTER * Math.sin(endAng);
+    const x3 = CX + R_INNER * Math.cos(endAng);
+    const y3 = CY + R_INNER * Math.sin(endAng);
+    const x4 = CX + R_INNER * Math.cos(startAng);
+    const y4 = CY + R_INNER * Math.sin(startAng);
+    const path = only
+      ? `M ${CX - R_OUTER} ${CY} A ${R_OUTER} ${R_OUTER} 0 1 1 ${CX + R_OUTER - 0.01} ${CY} L ${CX + R_INNER - 0.01} ${CY} A ${R_INNER} ${R_INNER} 0 1 0 ${CX - R_INNER} ${CY} Z`
+      : `M ${x1} ${y1} A ${R_OUTER} ${R_OUTER} 0 ${largeArc} 1 ${x2} ${y2} L ${x3} ${y3} A ${R_INNER} ${R_INNER} 0 ${largeArc} 0 ${x4} ${y4} Z`;
+    return {
+      channel: d.channel,
+      count: d.count,
+      pct: Math.round(frac * 100),
+      color: paletteFor(d.channel),
+      path,
+    };
+  });
+
+  return (
+    <div className="flex flex-col md:flex-row items-center gap-8">
+      <svg viewBox="0 0 220 220" width="220" height="220" className="shrink-0">
+        {slices.map((s) => (
+          <path key={s.channel} d={s.path} fill={s.color} />
+        ))}
+        <text
+          x={CX}
+          y={CY - 4}
+          textAnchor="middle"
+          fontSize="28"
+          fontFamily="var(--font-display)"
+          fontStyle="italic"
+          fill="var(--ink)"
+        >
+          {total}
+        </text>
+        <text
+          x={CX}
+          y={CY + 16}
+          textAnchor="middle"
+          fontSize="9"
+          letterSpacing="0.12em"
+          fontFamily="var(--font-mono)"
+          fill="var(--dust)"
+        >
+          TOTAL
+        </text>
+      </svg>
+      <ul className="flex-1 space-y-3 w-full">
+        {slices.map((s) => (
+          <li key={s.channel} className="flex items-baseline justify-between gap-4">
+            <span className="flex items-center gap-3">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ background: s.color }}
+                aria-hidden="true"
+              />
+              <span className="text-sm capitalize" style={{ color: 'var(--ink)' }}>
+                {s.channel}
+              </span>
+            </span>
+            <span className="flex items-baseline gap-3">
+              <span className="font-numeric text-xs" style={{ color: 'var(--ash)' }}>{s.count}</span>
+              <span
+                className="font-display italic text-lg"
+                style={{ color: 'var(--ink)', minWidth: '3.2rem', textAlign: 'right' }}
+              >
+                {s.pct}%
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function BarChart({ data }: { data: AnalyticsData['daily'] }) {
   if (!data.length) {
     return (
@@ -135,11 +252,11 @@ export function AnalyticsDashboard({ initial }: Props) {
 
   return (
     <div className="space-y-14">
-      {/* Primary KPI row */}
+      {/* Primary KPI row: the numbers a support manager glances at first. */}
       <section>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8">
           <Stat
-            label="Conversations"
+            label="Total conversations"
             value={summary.total ?? 0}
             caption={`Last ${data.period?.days ?? 30} days`}
           />
@@ -149,10 +266,9 @@ export function AnalyticsDashboard({ initial }: Props) {
             emphasis="forest"
           />
           <Stat
-            label="AI resolution"
-            value={`${summary.aiResolutionRate ?? 0}%`}
-            caption={`${summary.aiResolved ?? 0} handled by AI`}
-            emphasis="forest"
+            label="Resolved"
+            value={(summary.aiResolved ?? 0) + (summary.agentResolved ?? 0)}
+            caption={`${summary.agentResolved ?? 0} by agent · ${summary.aiResolved ?? 0} by AI`}
           />
           <Stat
             label="Escalation rate"
@@ -163,24 +279,21 @@ export function AnalyticsDashboard({ initial }: Props) {
         </div>
       </section>
 
-      {/* Secondary readouts */}
-      <section>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8">
+      {/* Secondary readouts — response times and channel breakdown pie. */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-10">
+        <div className="md:col-span-1 grid grid-cols-1 gap-y-6">
           <Stat label="First response" value={fmtMs(summary.avgFirstResponseMs)} caption="Agent replies" />
           <Stat label="Resolution time" value={resolutionLabel} caption="Open → resolved" />
-          <Stat label="Agent resolved" value={summary.agentResolved ?? 0} />
-          <div className="py-5" style={{ borderTop: '1px solid var(--rule)' }}>
-            <p className="eyebrow">Channels</p>
-            <div className="mt-3 space-y-2">
-              {channelSplit.length === 0 ? (
-                <p className="text-sm italic" style={{ color: 'var(--dust)' }}>—</p>
-              ) : channelSplit.map((c) => (
-                <div key={c.channel} className="flex items-baseline justify-between">
-                  <span className="text-sm capitalize" style={{ color: 'var(--ink)' }}>{c.channel}</span>
-                  <span className="font-numeric text-sm" style={{ color: 'var(--ash)' }}>{c.count}</span>
-                </div>
-              ))}
+        </div>
+        <div className="md:col-span-2">
+          <div className="pt-5" style={{ borderTop: '1px solid var(--rule)' }}>
+            <div className="flex items-baseline justify-between mb-6">
+              <p className="eyebrow">Conversations by channel</p>
+              <p className="text-[11px] font-numeric" style={{ color: 'var(--dust)' }}>
+                Last {data.period?.days ?? 30} days
+              </p>
             </div>
+            <ChannelPie data={channelSplit} />
           </div>
         </div>
       </section>

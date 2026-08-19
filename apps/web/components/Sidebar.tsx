@@ -19,8 +19,9 @@ const adminNavGroups: Array<{ eyebrow: string; items: { href: string; label: str
   {
     eyebrow: 'Work',
     items: [
-      { href: '/inbox',     label: 'Inbox' },
-      { href: '/analytics', label: 'Analytics' },
+      { href: '/analytics',     label: 'Dashboard' },
+      { href: '/inbox',         label: 'Inbox' },
+      { href: '/settings/team', label: 'Team' },
     ],
   },
   {
@@ -34,11 +35,9 @@ const adminNavGroups: Array<{ eyebrow: string; items: { href: string; label: str
   {
     eyebrow: 'Configure',
     items: [
-      { href: '/settings/team',      label: 'Team' },
       { href: '/settings/knowledge', label: 'Knowledge' },
       { href: '/settings/canned',    label: 'Canned replies' },
       { href: '/settings/sla',       label: 'SLA' },
-      { href: '/settings/billing',   label: 'Billing' },
     ],
   },
 ];

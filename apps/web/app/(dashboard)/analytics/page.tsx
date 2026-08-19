@@ -26,7 +26,7 @@ export default async function AnalyticsPage({ searchParams }: Props) {
     <div className="max-w-6xl mx-auto pt-12 pb-16 px-10">
       <div className="flex items-end justify-between mb-12 pb-6" style={{ borderBottom: '1px solid var(--rule)' }}>
         <div>
-          <p className="eyebrow">Analytics · Last {days} days</p>
+          <p className="eyebrow">Dashboard · Last {days} days</p>
           <h1 className="font-display text-5xl italic leading-none mt-3" style={{ color: 'var(--ink)' }}>
             How things are going.
           </h1>

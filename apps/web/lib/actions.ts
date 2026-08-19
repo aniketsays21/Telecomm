@@ -213,6 +213,20 @@ export async function updateWidgetSettingsAction(
   const greeting = formData.get('widgetGreeting') as string | null;
   const botName = formData.get('botName') as string | null;
   const position = formData.get('widgetPosition') as string | null;
+  const previewUrlRaw = (formData.get('widgetPreviewUrl') as string | null)?.trim() ?? '';
+  // Empty string clears the preview URL; anything else must parse as an http(s) URL.
+  let previewUrlPatch: { widgetPreviewUrl: string } | undefined;
+  if (previewUrlRaw === '') {
+    previewUrlPatch = { widgetPreviewUrl: '' };
+  } else {
+    try {
+      const u = new URL(previewUrlRaw.match(/^https?:\/\//i) ? previewUrlRaw : `https://${previewUrlRaw}`);
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('bad protocol');
+      previewUrlPatch = { widgetPreviewUrl: u.toString() };
+    } catch {
+      return { error: 'Preview URL must be a valid website address (e.g. https://example.com).' };
+    }
+  }
 
   try {
     const { api } = await import('./api');
@@ -221,6 +235,7 @@ export async function updateWidgetSettingsAction(
       ...(greeting ? { widgetGreeting: greeting } : {}),
       ...(botName ? { botName } : {}),
       ...(position ? { widgetPosition: position as 'bottom-right' | 'bottom-left' } : {}),
+      ...(previewUrlPatch ?? {}),
     });
     const { revalidatePath } = await import('next/cache');
     revalidatePath('/settings/widget');

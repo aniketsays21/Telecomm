@@ -16,6 +16,7 @@ export default async function WidgetSettingsPage() {
   const color = settings.widgetColor ?? '#4f46e5';
   const greeting = settings.widgetGreeting ?? '';
   const botName = settings.botName ?? '';
+  const previewUrl = settings.widgetPreviewUrl ?? '';
 
   return (
     <div className="max-w-2xl mx-auto py-10 px-6 space-y-10">
@@ -32,6 +33,8 @@ export default async function WidgetSettingsPage() {
           color={color}
           greeting={greeting}
           botName={botName}
+          previewUrl={previewUrl}
+          position={settings.widgetPosition ?? 'bottom-right'}
         />
       </section>
 
