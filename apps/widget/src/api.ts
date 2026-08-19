@@ -38,6 +38,44 @@ export async function sendMessage(
  * `since` is the ISO timestamp of the last message the widget already knows
  * about; the server returns everything strictly newer than that.
  */
+/**
+ * Fire-and-forget page-view ping. Any failure is silent — a page view we
+ * couldn't record must never break the customer's site or throw into the
+ * host page's error handlers.
+ */
+export function trackPageView(
+  apiUrl: string,
+  workspaceId: string,
+  sessionId: string,
+  url: string,
+  title?: string,
+  referrer?: string,
+): void {
+  const body = JSON.stringify({ workspaceId, sessionId, url, title, referrer });
+  // sendBeacon survives page unloads (SPA navigations that unload the JS
+  // context); fall back to fetch on browsers or contexts where it isn't
+  // available.
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      const blob = new Blob([body], { type: 'application/json' });
+      const ok = navigator.sendBeacon(`${apiUrl}/widget/page-view`, blob);
+      if (ok) return;
+    }
+  } catch {
+    // fall through to fetch
+  }
+  try {
+    void fetch(`${apiUrl}/widget/page-view`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    // swallow
+  }
+}
+
 export async function fetchNewMessages(
   apiUrl: string,
   workspaceId: string,

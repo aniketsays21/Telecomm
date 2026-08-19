@@ -1,6 +1,7 @@
 import { render } from 'preact';
 import { Widget } from './Widget';
 import { CSS } from './styles';
+import { trackPageView } from './api';
 
 function colorVars(hex: string = '#4f46e5'): string {
   const r = parseInt(hex.slice(1, 3), 16) || 79;
@@ -50,6 +51,39 @@ function mount() {
   shadow.appendChild(mountPoint);
 
   render(<Widget workspaceId={config.workspaceId} apiUrl={apiUrl} greeting={config.greeting} />, mountPoint);
+
+  // Reuse the same anonymous session id the chat uses, so a page view and a
+  // subsequent chat land on the same contact row.
+  const sidKey = `_tc_sid_${config.workspaceId}`;
+  let sid = localStorage.getItem(sidKey);
+  if (!sid) {
+    sid = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem(sidKey, sid);
+  }
+
+  let lastTrackedUrl = '';
+  function trackCurrent() {
+    const href = location.href;
+    if (href === lastTrackedUrl) return;
+    lastTrackedUrl = href;
+    trackPageView(apiUrl, config!.workspaceId!, sid!, href, document.title, document.referrer || undefined);
+  }
+  trackCurrent();
+
+  // SPA route changes: pushState / replaceState don't emit any event, so we
+  // wrap them. popstate fires on back/forward. Never intercept clicks — that
+  // way we don't interfere with the host site's own routing.
+  const origPush = history.pushState;
+  const origReplace = history.replaceState;
+  history.pushState = function (...args: Parameters<typeof origPush>) {
+    origPush.apply(this, args);
+    trackCurrent();
+  };
+  history.replaceState = function (...args: Parameters<typeof origReplace>) {
+    origReplace.apply(this, args);
+    trackCurrent();
+  };
+  window.addEventListener('popstate', trackCurrent);
 }
 
 if (document.readyState === 'loading') {

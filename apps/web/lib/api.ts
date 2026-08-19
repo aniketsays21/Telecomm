@@ -115,6 +115,7 @@ export const api = {
       contact: Contact;
       messages: Message[];
       summary: ConversationInsight | null;
+      journey: PageView[];
     }>(`/inbox/conversations/${id}`, {}, token),
 
   sendMessage: (token: string, conversationId: string, body: { body: string; isInternalNote?: boolean }) =>
@@ -236,6 +237,15 @@ export type Message = {
   aiConfidence: string | null;
   aiSources: unknown[];
   createdAt: string;
+};
+
+export type PageView = {
+  id: string;
+  url: string;
+  path: string;
+  title: string | null;
+  referrer: string | null;
+  viewedAt: string;
 };
 
 export type ConversationInsight = {

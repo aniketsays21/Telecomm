@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db } from '@telecomm/db';
-import { workspaces, contacts, conversations, messages, conversationSummaries } from '@telecomm/db/schema';
+import { workspaces, contacts, conversations, messages, conversationSummaries, contactPageViews } from '@telecomm/db/schema';
 import { embedQuery, generateAnswer, summarizeConversation } from '@telecomm/ai';
 import { searchChunks } from '../../lib/search.js';
 import { Queue } from 'bullmq';
@@ -303,6 +303,64 @@ export async function chatRoutes(app: FastifyInstance) {
         createdAt: m.createdAt.toISOString(),
       })),
     };
+  });
+
+  // POST /widget/page-view — record which page of the customer's site the
+  // visitor is on. Fire-and-forget from the widget; the row is used later to
+  // reconstruct the visitor's journey in the agent inbox. Anonymous by
+  // sessionId (same key as chat), so a visitor who never opens the chat still
+  // gets a contact row we can later merge if they identify themselves.
+  app.post('/widget/page-view', {
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const body = z.object({
+      workspaceId: z.string().uuid(),
+      sessionId: z.string().min(8),
+      url: z.string().url().max(2000),
+      title: z.string().max(500).optional(),
+      referrer: z.string().max(2000).optional(),
+    }).safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+
+    const { workspaceId, sessionId, url, title, referrer } = body.data;
+
+    const [ws] = await db.select({ id: workspaces.id }).from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1);
+    if (!ws) return reply.code(404).send({ error: 'Workspace not found' });
+
+    let path: string;
+    try {
+      path = new URL(url).pathname;
+    } catch {
+      return reply.code(400).send({ error: 'Invalid url' });
+    }
+
+    let [contact] = await db
+      .select({ id: contacts.id })
+      .from(contacts)
+      .where(and(eq(contacts.workspaceId, workspaceId), eq(contacts.externalId, sessionId)))
+      .limit(1);
+    if (!contact) {
+      [contact] = await db.insert(contacts).values({
+        workspaceId,
+        externalId: sessionId,
+        name: 'Visitor',
+        lastSeenAt: new Date(),
+      }).returning({ id: contacts.id });
+    } else {
+      await db.update(contacts).set({ lastSeenAt: new Date() }).where(eq(contacts.id, contact.id));
+    }
+
+    await db.insert(contactPageViews).values({
+      workspaceId,
+      contactId: contact.id,
+      sessionId,
+      url,
+      path,
+      title,
+      referrer,
+    });
+
+    return reply.code(204).send();
   });
 
   // POST /widget/ingest — trigger source ingestion (called from onboarding or settings)

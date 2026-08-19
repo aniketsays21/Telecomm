@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { eq, and, desc, sql, or, ilike } from 'drizzle-orm';
 import { db } from '@telecomm/db';
-import { conversations, messages, contacts, users, conversationSummaries } from '@telecomm/db/schema';
+import { conversations, messages, contacts, users, conversationSummaries, contactPageViews } from '@telecomm/db/schema';
 import { requireAuth } from '../../middleware/auth.js';
 import { broadcastToWorkspace } from '../ws/index.js';
 import {
@@ -228,7 +228,28 @@ export async function inboxRoutes(app: FastifyInstance) {
       .where(eq(conversationSummaries.conversationId, id))
       .limit(1);
 
-    return { conversation: conv, contact, messages: thread, summary: summary ?? null };
+    // Recent pages this contact has visited on the customer's site — capped so
+    // long-running visitors don't drown the sidebar. Ordered newest first.
+    const journeyRows = await db
+      .select({
+        id: contactPageViews.id,
+        url: contactPageViews.url,
+        path: contactPageViews.path,
+        title: contactPageViews.title,
+        referrer: contactPageViews.referrer,
+        viewedAt: contactPageViews.viewedAt,
+      })
+      .from(contactPageViews)
+      .where(eq(contactPageViews.contactId, contact.id))
+      .orderBy(desc(contactPageViews.viewedAt))
+      .limit(30);
+
+    const journey = journeyRows.map((r) => ({
+      ...r,
+      viewedAt: r.viewedAt.toISOString(),
+    }));
+
+    return { conversation: conv, contact, messages: thread, summary: summary ?? null, journey };
   });
 
   // POST /inbox/conversations/:id/messages — agent reply

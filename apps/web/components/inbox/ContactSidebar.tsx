@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useTransition, useRef } from 'react';
-import type { Contact, Conversation, ConversationInsight } from '@/lib/api';
+import type { Contact, Conversation, ConversationInsight, PageView } from '@/lib/api';
 import { updateConversationAction } from '@/lib/actions';
 
 interface Props {
   contact: Contact;
   conversation: Conversation;
   summary?: ConversationInsight | null;
+  journey?: PageView[];
 }
 
 function relativeTime(iso: string) {
@@ -89,7 +90,44 @@ function TagsEditor({ conversation }: { conversation: Conversation }) {
   );
 }
 
-export function ContactSidebar({ contact, conversation, summary }: Props) {
+function hostOf(url: string): string {
+  try { return new URL(url).host; } catch { return ''; }
+}
+
+function JourneySection({ views }: { views: PageView[] }) {
+  if (!views.length) return null;
+  return (
+    <>
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Recent pages</p>
+        <ol className="space-y-2">
+          {views.slice(0, 15).map((v) => (
+            <li key={v.id} className="flex items-start gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <a
+                  href={v.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-gray-800 hover:text-indigo-600 truncate block"
+                  title={v.url}
+                >
+                  {v.title || v.path || v.url}
+                </a>
+                <p className="text-[10px] text-gray-400 truncate">
+                  {hostOf(v.url)}{v.path} · {relativeTime(v.viewedAt)}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+      <hr className="border-gray-100" />
+    </>
+  );
+}
+
+export function ContactSidebar({ contact, conversation, summary, journey }: Props) {
   const [open, setOpen] = useState(true);
 
   return (
@@ -109,6 +147,9 @@ export function ContactSidebar({ contact, conversation, summary }: Props) {
 
       {open && (
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* Recent user journey */}
+          {journey && <JourneySection views={journey} />}
+
           {/* AI summary */}
           {summary && (
             <>
