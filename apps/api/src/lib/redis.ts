@@ -14,17 +14,22 @@
  */
 import type { RedisOptions } from 'ioredis';
 
-export function redisConnection(): RedisOptions | { url: string } & RedisOptions {
+export function redisConnection(): RedisOptions {
   const url = process.env.REDIS_URL?.trim();
   if (url) {
-    return {
-      // ioredis / BullMQ accept a URL passed via the shared options bag when
-      // you type-assert it; simpler is to parse it ourselves so both host/port
-      // AND auth make it into the client without depending on undocumented
-      // pass-through behavior.
-      ...parseRedisUrl(url),
-      maxRetriesPerRequest: null,
-    };
+    const parsed = tryParseRedisUrl(url);
+    if (parsed) {
+      return { ...parsed, maxRetriesPerRequest: null };
+    }
+    // Malformed REDIS_URL (usually an unresolved Railway template like
+    // `redis://:@:`). Fall through to discrete vars rather than crashing the
+    // process at module load — the queue instantiations sit at file top
+    // level, and a throw here would take the entire API down.
+    console.warn(
+      `[redis] REDIS_URL is set but not a valid URL (got: ${JSON.stringify(url)}). ` +
+        `Falling back to REDIS_HOST/PORT/PASSWORD. Fix the Railway reference — usually ` +
+        `\${{Redis.REDIS_PRIVATE_URL}} resolves cleanly where \${{Redis.REDIS_URL}} does not.`,
+    );
   }
   return {
     host: process.env.REDIS_HOST ?? 'localhost',
@@ -35,9 +40,19 @@ export function redisConnection(): RedisOptions | { url: string } & RedisOptions
   };
 }
 
-function parseRedisUrl(raw: string): Pick<RedisOptions, 'host' | 'port' | 'username' | 'password' | 'tls'> {
-  const url = new URL(raw);
-  const opts: ReturnType<typeof parseRedisUrl> = {
+function tryParseRedisUrl(
+  raw: string,
+): Pick<RedisOptions, 'host' | 'port' | 'username' | 'password' | 'tls'> | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  // Guard against an unresolved template like `redis://:@:` that technically
+  // parses in some Node versions but has no host to connect to.
+  if (!url.hostname) return null;
+  const opts: Pick<RedisOptions, 'host' | 'port' | 'username' | 'password' | 'tls'> = {
     host: url.hostname,
     port: Number(url.port || 6379),
   };
