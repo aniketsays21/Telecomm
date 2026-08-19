@@ -5,7 +5,33 @@ import { db } from '@telecomm/db';
 import { conversations, messages, contacts, users } from '@telecomm/db/schema';
 import { requireAuth } from '../../middleware/auth.js';
 import { broadcastToWorkspace } from '../ws/index.js';
-import { sendMail, isEmailConfigured, sendCsatRequest } from '../../lib/mailer.js';
+import {
+  sendMail,
+  isEmailConfigured,
+  sendCsatRequest,
+  buildOutboundMessageId,
+} from '../../lib/mailer.js';
+import { loadWorkspaceSender } from '../../lib/workspace-email.js';
+import { buildReferences } from '../../lib/inbound-email.js';
+import { isNotNull } from 'drizzle-orm';
+
+/**
+ * Newest message in the thread that carries a Message-ID, so an agent reply can
+ * be anchored to it via In-Reply-To/References and stay in the same thread in
+ * the customer's mail client.
+ */
+async function latestEmailMessage(conversationId: string) {
+  const [row] = await db
+    .select({
+      emailMessageId: messages.emailMessageId,
+      emailReferences: messages.emailReferences,
+    })
+    .from(messages)
+    .where(and(eq(messages.conversationId, conversationId), isNotNull(messages.emailMessageId)))
+    .orderBy(desc(messages.createdAt))
+    .limit(1);
+  return row;
+}
 
 export async function inboxRoutes(app: FastifyInstance) {
   // GET /inbox/conversations?status=open&limit=25&cursor=<id>
@@ -229,6 +255,27 @@ export async function inboxRoutes(app: FastifyInstance) {
       .limit(1);
     const contact = contactRows[0];
 
+    // Agent replies go out under the workspace's own verified sender, never the
+    // platform address. Resolve it before inserting so the outbound Message-ID
+    // can be derived from the sending domain and persisted with the message.
+    const replyToEmail =
+      !body.data.isInternalNote && conv.channel === 'email' ? contact?.email ?? undefined : undefined;
+    const isEmailReply = !!replyToEmail;
+    const sender = isEmailReply ? await loadWorkspaceSender(session.workspaceId) : {};
+
+    // Most recent outbound/inbound email in this thread, so the reply carries a
+    // correct In-Reply-To and References chain.
+    const parent = isEmailReply ? await latestEmailMessage(id) : undefined;
+    const outboundMessageId = isEmailReply
+      ? buildOutboundMessageId(sender.from ?? 'noreply@telecomm.local')
+      : undefined;
+    const outboundReferences = isEmailReply
+      ? buildReferences(
+          parent?.emailReferences ? parent.emailReferences.split(/\s+/) : [],
+          parent?.emailMessageId ?? conv.emailThreadId ?? undefined,
+        )
+      : undefined;
+
     const [msg] = await db.insert(messages).values({
       conversationId: id,
       workspaceId: session.workspaceId,
@@ -236,6 +283,9 @@ export async function inboxRoutes(app: FastifyInstance) {
       authorId: session.userId,
       body: body.data.body,
       isInternalNote: body.data.isInternalNote,
+      emailMessageId: outboundMessageId,
+      emailInReplyTo: parent?.emailMessageId ?? undefined,
+      emailReferences: outboundReferences,
     }).returning();
 
     if (!body.data.isInternalNote) {
@@ -246,17 +296,29 @@ export async function inboxRoutes(app: FastifyInstance) {
     }
 
     // Send email reply if this is an email conversation and SMTP is configured
-    if (!body.data.isInternalNote && conv.channel === 'email' && contact?.email && isEmailConfigured()) {
+    if (replyToEmail && isEmailConfigured()) {
       try {
-        await sendMail({
-          to: contact.email,
+        const info = await sendMail({
+          to: replyToEmail,
+          from: sender.from,
+          fromName: sender.fromName,
           subject: conv.subject ? `Re: ${conv.subject}` : 'Re: Your support request',
           text: body.data.body,
-          inReplyTo: conv.emailThreadId ?? undefined,
-          references: conv.emailThreadId ?? undefined,
+          messageId: outboundMessageId,
+          inReplyTo: parent?.emailMessageId ?? conv.emailThreadId ?? undefined,
+          references: outboundReferences ?? conv.emailThreadId ?? undefined,
         });
+        const delivered = info?.messageId?.replace(/^<|>$/g, '');
+        if (delivered && delivered !== outboundMessageId) {
+          await db.update(messages)
+            .set({ emailMessageId: delivered })
+            .where(eq(messages.id, msg.id));
+        }
       } catch (err: any) {
         app.log.error({ err }, 'Failed to send email reply');
+        await db.update(messages)
+          .set({ deliveryState: 'failed' })
+          .where(eq(messages.id, msg.id));
       }
     }
 
@@ -315,9 +377,20 @@ export async function inboxRoutes(app: FastifyInstance) {
       const contactEmail = contactRows[0]?.email;
       if (contactEmail) {
         const subject = updated.subject ?? 'your recent support request';
-        sendCsatRequest({ to: contactEmail, conversationId: id, subject }).catch(
-          (err: any) => app.log.error({ err }, 'Failed to send CSAT email'),
-        );
+        // CSAT reaches the customer, so it must come from the brand's address —
+        // not the platform sender.
+        loadWorkspaceSender(session.workspaceId)
+          .then((sender) =>
+            sendCsatRequest({
+              to: contactEmail,
+              conversationId: id,
+              subject,
+              from: sender.from,
+              fromName: sender.fromName,
+              messageId: buildOutboundMessageId(sender.from ?? 'noreply@telecomm.local'),
+            }),
+          )
+          .catch((err: any) => app.log.error({ err }, 'Failed to send CSAT email'));
       }
     }
 

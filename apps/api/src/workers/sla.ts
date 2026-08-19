@@ -1,7 +1,8 @@
 import { db } from '@telecomm/db';
-import { conversations, users } from '@telecomm/db/schema';
+import { conversations, users, workspaces } from '@telecomm/db/schema';
 import { and, eq, isNotNull, lt } from 'drizzle-orm';
 import { sendMail } from '../lib/mailer.js';
+import { resolveWorkspaceSender } from '../lib/workspace-email.js';
 
 // Tracks IDs already alerted this process lifetime to avoid repeat emails.
 // Cleared hourly so alerts resume if a conversation stays open very long.
@@ -21,9 +22,12 @@ async function checkSlaBreaches() {
         slaDueAt: conversations.slaDueAt,
         assigneeName: users.name,
         assigneeEmail: users.email,
+        workspaceName: workspaces.name,
+        workspaceSettings: workspaces.settings,
       })
       .from(conversations)
       .innerJoin(users, eq(users.id, conversations.assigneeId))
+      .innerJoin(workspaces, eq(workspaces.id, conversations.workspaceId))
       .where(
         and(
           eq(conversations.status, 'open'),
@@ -40,8 +44,17 @@ async function checkSlaBreaches() {
       const subject = conv.subject ?? (conv.channel === 'chat' ? 'Chat session' : 'Email conversation');
       const overMinutes = Math.round((now.getTime() - conv.slaDueAt!.getTime()) / 60000);
 
+      // Send under the workspace's own sender so the alert is recognisable to
+      // the agent and never leaks another brand's address.
+      const sender = resolveWorkspaceSender({
+        name: conv.workspaceName,
+        settings: conv.workspaceSettings,
+      });
+
       sendMail({
         to: conv.assigneeEmail,
+        from: sender.from,
+        fromName: sender.fromName,
         subject: `SLA breached: ${subject}`,
         text: [
           `Hi ${conv.assigneeName},`,

@@ -14,9 +14,30 @@ const ingestQueue = new Queue(QUEUES.INGEST, {
   },
 });
 
-// Inbound email address for a workspace: support-{slug}@inbound.telecomm.io
-function inboundAddress(slug: string) {
-  return `support-${slug}@inbound.telecomm.io`;
+/**
+ * The single, platform-wide inbound address that every workspace forwards to.
+ *
+ * There is deliberately no per-workspace inbound address: one Postmark server
+ * receives all mail and the owning workspace is resolved from the recipient of
+ * the forwarded email (its `supportEmail`). Set POSTMARK_INBOUND_ADDRESS to the
+ * inbound address of the shared Postmark server.
+ */
+function inboundAddress(): string {
+  return process.env.POSTMARK_INBOUND_ADDRESS?.trim() ?? '';
+}
+
+function forwardingInstructions(supportEmail: string): string {
+  const inbound = inboundAddress();
+  if (!inbound) {
+    return (
+      `Forward ${supportEmail} to the platform inbound address. ` +
+      'That address is not configured yet — set POSTMARK_INBOUND_ADDRESS on the API.'
+    );
+  }
+  return (
+    `Forward ${supportEmail} to ${inbound}. Replies are routed back to this workspace ` +
+    `because ${supportEmail} is registered as its support address.`
+  );
 }
 
 // Widget snippet for a workspace
@@ -43,7 +64,10 @@ export async function onboardingRoutes(app: FastifyInstance) {
       onboardingState: ws.onboardingState ?? {},
       isLive: ws.isLive,
       slug: ws.slug,
-      inboundEmail: inboundAddress(ws.slug),
+      inboundEmail: inboundAddress(),
+      inboundConfigured: !!inboundAddress(),
+      supportEmail: (ws.settings as any)?.supportEmail ?? null,
+      smtpFromAddress: (ws.settings as any)?.smtpFromAddress ?? null,
       widgetSnippet: widgetSnippet(ws.id, process.env.API_URL ?? 'http://localhost:4000'),
       sources: wsSources,
     };
@@ -60,15 +84,38 @@ export async function onboardingRoutes(app: FastifyInstance) {
     const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).limit(1);
     if (!ws) return reply.code(404).send({ error: 'Workspace not found' });
 
-    await db.update(workspaces).set({
-      settings: { ...((ws.settings as object) ?? {}), supportEmail: body.data.supportEmail } as any,
-      onboardingState: { ...((ws.onboardingState as object) ?? {}), emailConnected: true } as any,
-      updatedAt: new Date(),
-    }).where(eq(workspaces.id, session.workspaceId));
+    // Normalise: this address is the inbound routing key and is matched
+    // case-insensitively, so store it in a single canonical form.
+    const supportEmail = body.data.supportEmail.trim().toLowerCase();
+    const existing = (ws.settings as any) ?? {};
+
+    try {
+      await db.update(workspaces).set({
+        settings: {
+          ...existing,
+          supportEmail,
+          // Default the outbound sender to the same address so a brand that
+          // only completes onboarding already sends under its own identity.
+          smtpFromAddress: existing.smtpFromAddress ?? supportEmail,
+        } as any,
+        onboardingState: { ...((ws.onboardingState as object) ?? {}), emailConnected: true } as any,
+        updatedAt: new Date(),
+      }).where(eq(workspaces.id, session.workspaceId));
+    } catch (err: any) {
+      // workspaces_support_email_key — another workspace already routes this address.
+      if (err?.code === '23505') {
+        return reply.code(409).send({
+          error: 'That support address is already connected to another workspace.',
+        });
+      }
+      throw err;
+    }
 
     return {
-      inboundEmail: inboundAddress(ws.slug),
-      forwardingInstructions: `Set up email forwarding from ${body.data.supportEmail} to ${inboundAddress(ws.slug)}, or use it as your reply-to address.`,
+      inboundEmail: inboundAddress(),
+      inboundConfigured: !!inboundAddress(),
+      supportEmail,
+      forwardingInstructions: forwardingInstructions(supportEmail),
     };
   });
 

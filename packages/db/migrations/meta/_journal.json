@@ -8,6 +8,13 @@
       "when": 1787072711737,
       "tag": "0000_lively_true_believers",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787117971132,
+      "tag": "0001_cool_starbolt",
+      "breakpoints": true
     }
   ]
 }

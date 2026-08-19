@@ -1,4 +1,5 @@
-import { pgTable, text, jsonb, boolean, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, text, jsonb, boolean, timestamp, uuid, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const workspaces = pgTable('workspaces', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -13,7 +14,12 @@ export const workspaces = pgTable('workspaces', {
   customDomainVerified: boolean('custom_domain_verified').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  // Inbound routing key. A single shared Postmark inbound webhook resolves the
+  // owning workspace by matching the recipient address against this value, so
+  // two workspaces must never claim the same support address.
+  uniqueIndex('workspaces_support_email_key').on(sql`lower(${t.settings} ->> 'supportEmail')`),
+]);
 
 export type BusinessHours = {
   timezone: string;
@@ -28,6 +34,22 @@ export type WorkspaceSettings = {
   defaultSlaChat?: number;  // seconds
   defaultSlaEmail?: number; // seconds
   roiHourlyRate?: number;
+  /**
+   * The brand's own support address (e.g. support@brandb.com), captured during
+   * onboarding. Doubles as the inbound routing key: a single shared Postmark
+   * inbound webhook resolves the owning workspace by matching the recipient of
+   * the incoming email against this value. Enforced unique across workspaces.
+   */
+  supportEmail?: string;
+  /**
+   * Verified sender address used as the `From` on every outbound email for this
+   * workspace. Must be a verified Postmark sender signature on the shared
+   * Postmark server. Falls back to `supportEmail` when unset, so a brand that
+   * only completed onboarding still sends under its own address.
+   */
+  smtpFromAddress?: string;
+  /** Display name shown alongside `smtpFromAddress`. Defaults to the workspace name. */
+  smtpFromName?: string;
 };
 export type OnboardingState = {
   emailConnected?: boolean;

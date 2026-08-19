@@ -1,8 +1,17 @@
+import { randomUUID } from 'crypto';
 import nodemailer from 'nodemailer';
+
+// SMTP credentials are PLATFORM-level and shared by every workspace: one relay,
+// one set of credentials, one sending infrastructure. What is per-workspace is
+// the `From` address — each brand sends under its own verified sender signature
+// on that shared relay. Never derive a brand's sender from SMTP_FROM.
 
 // Transporter is lazily created and reused
 let _transport: nodemailer.Transporter | null = null;
 let _isEthereal = false;
+// Sender for the dev/Ethereal transport, captured when the test account is made.
+// Only used as a last-resort fallback so local dev works with no SMTP config.
+let _etherealFrom: string | null = null;
 
 async function getTransport() {
   if (_transport) return _transport;
@@ -21,6 +30,7 @@ async function getTransport() {
       auth: { user: testAccount.user, pass: testAccount.pass },
     });
     _isEthereal = true;
+    _etherealFrom = testAccount.user;
     console.log('[mailer] Using Ethereal (dev) — emails will not be delivered');
     return _transport;
   }
@@ -34,31 +44,94 @@ async function getTransport() {
   return _transport;
 }
 
+/**
+ * Platform-level sender, used only for mail that belongs to no workspace.
+ * Workspace mail must pass an explicit `from` — see `resolveWorkspaceSender`.
+ */
+function platformFrom(): string {
+  const configured = process.env.SMTP_FROM ?? process.env.SMTP_USER;
+  if (configured) return configured;
+  if (_etherealFrom) return _etherealFrom;
+  throw new Error(
+    '[mailer] No sender address available. Set the workspace smtpFromAddress, ' +
+      'or configure SMTP_FROM for platform-level mail.',
+  );
+}
+
+/** Format an address as `"Display Name" <addr@example.com>` when a name is given. */
+function formatAddress(address: string, name?: string): string {
+  if (!name) return address;
+  return `${JSON.stringify(name)} <${address}>`;
+}
+
+/**
+ * Strip the angle brackets from a Message-ID so header values and provider
+ * payloads compare equal. Postmark's `MessageID` field arrives bare while the
+ * raw `Message-ID`/`In-Reply-To` headers are bracketed; we store bare
+ * everywhere and re-add brackets only when writing headers.
+ */
+export function normalizeMessageId(id: string | null | undefined): string | undefined {
+  if (!id) return undefined;
+  const trimmed = id.trim().replace(/^<+/, '').replace(/>+$/, '').trim();
+  return trimmed || undefined;
+}
+
+/** Wrap a bare Message-ID in angle brackets for use in an email header. */
+export function bracketMessageId(id: string | null | undefined): string | undefined {
+  const bare = normalizeMessageId(id);
+  return bare ? `<${bare}>` : undefined;
+}
+
+/**
+ * Generate the Message-ID for an outbound email BEFORE sending it, so the value
+ * can be persisted on the message row in the same transaction that creates it.
+ * When the customer replies, their In-Reply-To points at this ID and the inbound
+ * handler resolves the existing conversation from it.
+ */
+export function buildOutboundMessageId(fromAddress: string): string {
+  const domain = fromAddress.split('@')[1]?.trim() || 'telecomm.local';
+  return `${randomUUID()}@${domain}`;
+}
+
 export interface MailOptions {
   to: string;
+  /**
+   * Workspace sender address. Required for any mail sent on behalf of a brand;
+   * omit only for genuinely platform-level mail, which falls back to SMTP_FROM.
+   */
+  from?: string;
+  fromName?: string;
   replyTo?: string;
   subject: string;
   text: string;
   html?: string;
   inReplyTo?: string;
   references?: string;
+  /** Bare or bracketed Message-ID; brackets are normalised before sending. */
   messageId?: string;
 }
 
 export async function sendMail(opts: MailOptions) {
-  const from = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? 'support@telecomm.app';
+  // Create the transport first so the Ethereal fallback sender is available.
   const transport = await getTransport();
+  const fromAddress = opts.from ?? platformFrom();
 
   const info = await transport.sendMail({
-    from,
+    from: formatAddress(fromAddress, opts.fromName),
     to: opts.to,
     replyTo: opts.replyTo,
     subject: opts.subject,
     text: opts.text,
     html: opts.html ?? opts.text.replace(/\n/g, '<br>'),
-    inReplyTo: opts.inReplyTo,
-    references: opts.references,
-    messageId: opts.messageId,
+    inReplyTo: bracketMessageId(opts.inReplyTo),
+    references: opts.references
+      ? opts.references
+          .split(/\s+/)
+          .map((r) => bracketMessageId(r))
+          .filter(Boolean)
+          .join(' ')
+      : undefined,
+    messageId: bracketMessageId(opts.messageId),
   });
 
   if (_isEthereal) {
@@ -76,6 +149,10 @@ export async function sendCsatRequest(opts: {
   to: string;
   conversationId: string;
   subject: string;
+  /** Workspace sender — CSAT must reach the customer under the brand's address. */
+  from?: string;
+  fromName?: string;
+  messageId?: string;
 }) {
   const apiUrl = (process.env.PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/$/, '');
   const base = `${apiUrl}/csat/${opts.conversationId}/rate?rating=`;
@@ -110,8 +187,11 @@ export async function sendCsatRequest(opts: {
 
   return sendMail({
     to: opts.to,
+    from: opts.from,
+    fromName: opts.fromName,
     subject: `How did we do? — ${opts.subject}`,
     text: textBody,
     html: htmlBody,
+    messageId: opts.messageId,
   });
 }
