@@ -6,13 +6,9 @@ import { eq } from 'drizzle-orm';
 import { crawlSite } from '../lib/crawler.js';
 import { chunkText } from '../lib/chunker.js';
 import { createHash } from 'crypto';
+import { redisConnection } from '../lib/redis.js';
 
-const redisConnection = {
-  host: process.env.REDIS_HOST ?? 'localhost',
-  port: Number(process.env.REDIS_PORT ?? 6379),
-};
-
-export const embedQueue = new Queue(QUEUES.EMBED, { connection: redisConnection });
+export const embedQueue = new Queue(QUEUES.EMBED, { connection: redisConnection() });
 
 export function startIngestWorker() {
   const worker = new Worker(
@@ -154,7 +150,7 @@ export function startIngestWorker() {
       }
     },
     {
-      connection: redisConnection,
+      connection: redisConnection(),
       concurrency: 2,
     },
   );

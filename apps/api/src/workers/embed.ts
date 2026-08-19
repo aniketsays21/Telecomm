@@ -4,11 +4,7 @@ import { chunks } from '@telecomm/db/schema';
 import { QUEUES } from '@telecomm/shared';
 import { embedTexts } from '@telecomm/ai';
 import { eq, inArray } from 'drizzle-orm';
-
-const redisConnection = {
-  host: process.env.REDIS_HOST ?? 'localhost',
-  port: Number(process.env.REDIS_PORT ?? 6379),
-};
+import { redisConnection } from '../lib/redis.js';
 
 export function startEmbedWorker() {
   const worker = new Worker(
@@ -37,7 +33,7 @@ export function startEmbedWorker() {
       return { ok: true };
     },
     {
-      connection: redisConnection,
+      connection: redisConnection(),
       concurrency: 5, // embed 5 chunks in parallel
     },
   );

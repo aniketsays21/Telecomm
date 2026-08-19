@@ -6,12 +6,9 @@ import { sources } from '@telecomm/db/schema';
 import { requireAuth } from '../../middleware/auth.js';
 import { Queue } from 'bullmq';
 import { QUEUES } from '@telecomm/shared';
+import { redisConnection } from '../../lib/redis.js';
 
-const redisConnection = {
-  host: process.env.REDIS_HOST ?? 'localhost',
-  port: Number(process.env.REDIS_PORT ?? 6379),
-};
-const ingestQueue = new Queue(QUEUES.INGEST, { connection: redisConnection });
+const ingestQueue = new Queue(QUEUES.INGEST, { connection: redisConnection() });
 
 export async function knowledgeRoutes(app: FastifyInstance) {
   // GET /kb/sources — list all sources for the workspace
@@ -62,10 +59,12 @@ export async function knowledgeRoutes(app: FastifyInstance) {
       status: 'pending',
     }).returning();
 
-    await ingestQueue.add('ingest-source', { sourceId: source.id }, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 5000 },
-    });
+    ingestQueue
+      .add('ingest-source', { sourceId: source.id }, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      })
+      .catch((err) => request.log.error({ err, sourceId: source.id }, 'Failed to enqueue ingest job'));
 
     return reply.code(201).send({ source });
   });
@@ -87,10 +86,12 @@ export async function knowledgeRoutes(app: FastifyInstance) {
 
     await db.update(sources).set({ status: 'pending', lastError: null }).where(eq(sources.id, id));
 
-    await ingestQueue.add('ingest-source', { sourceId: id }, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 5000 },
-    });
+    ingestQueue
+      .add('ingest-source', { sourceId: id }, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      })
+      .catch((err) => request.log.error({ err, sourceId: id }, 'Failed to enqueue ingest job'));
 
     return { queued: true, sourceId: id };
   });

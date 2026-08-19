@@ -6,13 +6,9 @@ import { workspaces, sources } from '@telecomm/db/schema';
 import { requireAuth } from '../../middleware/auth.js';
 import { Queue } from 'bullmq';
 import { QUEUES } from '@telecomm/shared';
+import { redisConnection } from '../../lib/redis.js';
 
-const ingestQueue = new Queue(QUEUES.INGEST, {
-  connection: {
-    host: process.env.REDIS_HOST ?? 'localhost',
-    port: Number(process.env.REDIS_PORT ?? 6379),
-  },
-});
+const ingestQueue = new Queue(QUEUES.INGEST, { connection: redisConnection() });
 
 /**
  * The single, platform-wide inbound address that every workspace forwards to.
@@ -158,11 +154,17 @@ export async function onboardingRoutes(app: FastifyInstance) {
       updatedAt: new Date(),
     }).where(eq(workspaces.id, session.workspaceId));
 
-    // Kick off ingestion immediately
-    await ingestQueue.add('ingest-source', { sourceId: source.id }, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 5000 },
-    });
+    // Fire-and-forget the enqueue: the source row is already persisted with
+    // status='pending', so the client can render it immediately while ingestion
+    // happens in the background. Awaiting here made the UI spinner hang for
+    // however long the initial Redis handshake took, and turned a transient
+    // Redis outage into a hard 500 on onboarding.
+    ingestQueue
+      .add('ingest-source', { sourceId: source.id }, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      })
+      .catch((err) => request.log.error({ err, sourceId: source.id }, 'Failed to enqueue ingest job'));
 
     return { source };
   });

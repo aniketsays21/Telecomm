@@ -8,12 +8,9 @@ import { searchChunks } from '../../lib/search.js';
 import { Queue } from 'bullmq';
 import { QUEUES } from '@telecomm/shared';
 import { broadcastToWorkspace } from '../ws/index.js';
+import { redisConnection } from '../../lib/redis.js';
 
-const redisConnection = {
-  host: process.env.REDIS_HOST ?? 'localhost',
-  port: Number(process.env.REDIS_PORT ?? 6379),
-};
-const ingestQueue = new Queue(QUEUES.INGEST, { connection: redisConnection });
+const ingestQueue = new Queue(QUEUES.INGEST, { connection: redisConnection() });
 
 export async function chatRoutes(app: FastifyInstance) {
   // POST /widget/chat  — public endpoint called by the embedded widget
@@ -158,10 +155,12 @@ export async function chatRoutes(app: FastifyInstance) {
   // POST /widget/ingest — trigger source ingestion (called from onboarding or settings)
   app.post('/widget/ingest/:sourceId', async (request, reply) => {
     const { sourceId } = request.params as { sourceId: string };
-    await ingestQueue.add('ingest-source', { sourceId }, {
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 5000 },
-    });
+    ingestQueue
+      .add('ingest-source', { sourceId }, {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 5000 },
+      })
+      .catch((err) => request.log.error({ err, sourceId }, 'Failed to enqueue ingest job'));
     return { queued: true, sourceId };
   });
 }
