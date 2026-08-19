@@ -93,7 +93,14 @@ interface Props {
 
 export function AnalyticsDashboard({ initial }: Props) {
   const [data] = useState(initial);
-  const { summary, daily, topEscalationReasons, channelSplit, topContacts, topTopics } = data;
+  // Defensive against an API deployment that pre-dates any of these fields —
+  // an out-of-sync API rollout should not blank the whole page.
+  const summary = data.summary ?? ({} as AnalyticsData['summary']);
+  const daily = data.daily ?? [];
+  const topEscalationReasons = data.topEscalationReasons ?? [];
+  const channelSplit = data.channelSplit ?? [];
+  const topContacts = data.topContacts ?? [];
+  const topTopics = data.topTopics ?? [];
   const resolutionLabel = summary.avgResolutionMinutes == null
     ? '—'
     : summary.avgResolutionMinutes < 60

@@ -214,15 +214,28 @@ export async function chatRoutes(app: FastifyInstance) {
         .catch((err) => request.log.error({ err, conversationId: conversation.id }, 'Summary generation failed'));
 
     } catch (err: any) {
-      // AI unavailable — escalate gracefully
+      // AI unavailable — escalate gracefully AND still auto-assign so the
+      // conversation lands on a real agent's queue instead of the void.
       replyText = "I'm having trouble right now. A human agent will follow up shortly.";
       escalated = true;
-      await db.update(conversations).set({
+      const fallbackUpdate: Record<string, unknown> = {
         aiHandled: false,
         escalatedAt: new Date(),
         escalationReason: 'AI error: ' + err.message,
         lastMessageAt: new Date(),
-      }).where(eq(conversations.id, conversation.id));
+      };
+      if (!conversation.assigneeId) {
+        try {
+          const agentId = await pickBestAgent(workspaceId);
+          if (agentId) {
+            fallbackUpdate.assigneeId = agentId;
+            fallbackUpdate.assignedAt = new Date();
+          }
+        } catch (assignErr) {
+          request.log.warn({ err: assignErr, conversationId: conversation.id }, 'Auto-assign on AI failure failed');
+        }
+      }
+      await db.update(conversations).set(fallbackUpdate).where(eq(conversations.id, conversation.id));
 
       await db.insert(messages).values({
         conversationId: conversation.id,

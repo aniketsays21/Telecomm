@@ -14,7 +14,13 @@ export default async function AnalyticsPage({ searchParams }: Props) {
   const { days: daysStr } = await searchParams;
   const days = Math.min(Number(daysStr ?? 30), 90);
 
-  const data = await api.getAnalytics(session.token, days);
+  let data: Awaited<ReturnType<typeof api.getAnalytics>> | null = null;
+  let loadError: string | null = null;
+  try {
+    data = await api.getAnalytics(session.token, days);
+  } catch (err: unknown) {
+    loadError = err instanceof Error ? err.message : 'Failed to load analytics';
+  }
 
   return (
     <div className="max-w-5xl mx-auto py-10 px-6">
@@ -39,7 +45,17 @@ export default async function AnalyticsPage({ searchParams }: Props) {
           ))}
         </div>
       </div>
-      <AnalyticsDashboard initial={data} />
+      {loadError && (
+        <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4">
+          <p className="text-sm font-medium text-rose-800">Couldn't load analytics</p>
+          <p className="text-xs text-rose-600 mt-1 break-all">{loadError}</p>
+          <p className="text-xs text-rose-500 mt-2">
+            Common causes: the API service was redeployed with a newer schema than the DB, or
+            the request timed out. Check the API service logs on Railway.
+          </p>
+        </div>
+      )}
+      {data && <AnalyticsDashboard initial={data} />}
     </div>
   );
 }
