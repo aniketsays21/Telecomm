@@ -34,6 +34,7 @@ export default async function OnboardingPage() {
       <OnboardingWizard
         initialData={data}
         workspaceName={session.name}
+        workspaceId={session.workspaceId}
         initialAvailability={me?.availability ?? null}
         initialGmailAddress={gmailStatus.connected ? (gmailStatus.account?.emailAddress ?? null) : null}
       />

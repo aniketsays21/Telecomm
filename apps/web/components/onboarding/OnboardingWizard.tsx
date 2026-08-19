@@ -23,6 +23,7 @@ const STEPS: { id: Step; label: string; description: string }[] = [
 type Props = {
   initialData: OnboardingData;
   workspaceName: string;
+  workspaceId: string;
   initialAvailability: AgentAvailability | null;
   initialGmailAddress: string | null;
 };
@@ -30,6 +31,7 @@ type Props = {
 export function OnboardingWizard({
   initialData,
   workspaceName,
+  workspaceId,
   initialAvailability,
   initialGmailAddress,
 }: Props) {
@@ -113,6 +115,7 @@ export function OnboardingWizard({
           <WidgetStep
             snippet={initialData.widgetSnippet}
             workspaceName={workspaceName}
+            workspaceId={workspaceId}
             onDone={() => advance('widget')}
           />
         )}

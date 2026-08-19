@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import type { AgentAvailability } from '@/lib/api';
 import { inviteUserAction, completeOnboardingAction, updateMyAvailabilityAction } from '@/lib/actions';
 
@@ -8,8 +9,9 @@ type Invite = {
   id: string;
   name: string;
   email: string;
-  status: 'sent' | 'sending' | 'error';
+  status: 'sent' | 'sending' | 'error' | 'created_no_email';
   errorMessage?: string;
+  inviteLink?: string;
 };
 
 const DAY_LABELS: Array<{ n: 0 | 1 | 2 | 3 | 4 | 5 | 6; label: string }> = [
@@ -44,6 +46,8 @@ export function TeamStep({ initialAvailability }: Props) {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [isInviting, startInvite] = useTransition();
   const [isPublishing, startPublish] = useTransition();
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const router = useRouter();
 
   // Working hours — reuse the availability shape used elsewhere in the app,
   // but with a friendlier onboarding UI (weekday toggles, one open/close for
@@ -87,10 +91,25 @@ export function TeamStep({ initialAvailability }: Props) {
       const res = await inviteUserAction(undefined, formDataFrom({ name: nextName, email: nextEmail, role: 'agent' }));
       if (res && 'error' in res && res.error) {
         setInvites((prev) => prev.map((i) => (i.id === tmpId ? { ...i, status: 'error', errorMessage: res.error } : i)));
-      } else {
-        setInvites((prev) => prev.map((i) => (i.id === tmpId ? { ...i, status: 'sent' } : i)));
+        return;
+      }
+      // Even on success, SMTP might not be wired up in this environment — the
+      // invite row is created either way, but we want to surface the link so
+      // the admin can copy it manually until email is set up.
+      if (res && 'success' in res && res.success) {
+        setInvites((prev) => prev.map((i) => (
+          i.id === tmpId
+            ? { ...i, status: res.emailSent ? 'sent' : 'created_no_email', inviteLink: res.inviteLink }
+            : i
+        )));
       }
     });
+  }
+
+  function copyInviteLink(link: string) {
+    try {
+      void navigator.clipboard.writeText(link);
+    } catch { /* clipboard blocked, ignore */ }
   }
 
   function removeInvite(id: string) {
@@ -98,6 +117,7 @@ export function TeamStep({ initialAvailability }: Props) {
   }
 
   async function publish() {
+    setPublishError(null);
     startPublish(async () => {
       // Save the admin's own working hours first so the on-duty logic has
       // something to work from once the workspace is live.
@@ -111,7 +131,14 @@ export function TeamStep({ initialAvailability }: Props) {
           /* non-blocking — don't stop the publish if this fails */
         }
       }
-      await completeOnboardingAction();
+      const res = await completeOnboardingAction();
+      if (res && 'error' in res && res.error) {
+        setPublishError(res.error);
+        return;
+      }
+      const next = (res && 'next' in res && res.next) || '/analytics';
+      router.push(next);
+      router.refresh();
     });
   }
 
@@ -168,34 +195,54 @@ export function TeamStep({ initialAvailability }: Props) {
             {invites.map((i) => (
               <li
                 key={i.id}
-                className="flex items-center gap-3 px-4 py-3 bg-gray-50 rounded-xl border border-gray-100"
+                className="px-4 py-3 bg-gray-50 rounded-xl border border-gray-100"
               >
-                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 text-xs font-semibold text-indigo-700">
-                  {i.name[0]?.toUpperCase() ?? '?'}
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 text-xs font-semibold text-indigo-700">
+                    {i.name[0]?.toUpperCase() ?? '?'}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{i.name}</p>
+                    <p className="text-xs text-gray-500 truncate">{i.email}</p>
+                    {i.status === 'error' && i.errorMessage && (
+                      <p className="text-xs text-red-600 mt-0.5">{i.errorMessage}</p>
+                    )}
+                  </div>
+                  <span
+                    className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
+                      i.status === 'sent' ? 'bg-emerald-100 text-emerald-700'
+                      : i.status === 'created_no_email' ? 'bg-amber-100 text-amber-700'
+                      : i.status === 'error' ? 'bg-red-100 text-red-700'
+                      : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {i.status === 'sent' ? 'Invite sent'
+                     : i.status === 'created_no_email' ? 'Copy link'
+                     : i.status === 'error' ? 'Failed'
+                     : 'Sending…'}
+                  </span>
+                  <button
+                    onClick={() => removeInvite(i.id)}
+                    className="text-gray-300 hover:text-red-400 text-lg leading-none"
+                    aria-label="Remove"
+                  >
+                    ×
+                  </button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{i.name}</p>
-                  <p className="text-xs text-gray-500 truncate">{i.email}</p>
-                  {i.status === 'error' && i.errorMessage && (
-                    <p className="text-xs text-red-600 mt-0.5">{i.errorMessage}</p>
-                  )}
-                </div>
-                <span
-                  className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${
-                    i.status === 'sent' ? 'bg-emerald-100 text-emerald-700'
-                    : i.status === 'error' ? 'bg-red-100 text-red-700'
-                    : 'bg-gray-100 text-gray-600'
-                  }`}
-                >
-                  {i.status === 'sent' ? 'Invite sent' : i.status === 'error' ? 'Failed' : 'Sending…'}
-                </span>
-                <button
-                  onClick={() => removeInvite(i.id)}
-                  className="text-gray-300 hover:text-red-400 text-lg leading-none"
-                  aria-label="Remove"
-                >
-                  ×
-                </button>
+                {i.status === 'created_no_email' && i.inviteLink && (
+                  <div className="mt-2 flex items-center gap-2 rounded-lg bg-amber-50 border border-amber-100 px-3 py-2">
+                    <p className="text-[11px] text-amber-800 flex-1">
+                      Email sending isn&apos;t configured. Copy this invite link and share it directly:
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => copyInviteLink(i.inviteLink!)}
+                      className="text-[11px] px-2 py-1 border border-amber-300 rounded text-amber-800 hover:bg-amber-100"
+                    >
+                      Copy link
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -253,18 +300,25 @@ export function TeamStep({ initialAvailability }: Props) {
         </p>
       </section>
 
-      <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-        <p className="text-xs text-gray-400">
-          Ready when you are — you can invite more teammates any time.
-        </p>
-        <button
-          type="button"
-          onClick={publish}
-          disabled={isPublishing}
-          className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-sm font-semibold rounded-lg transition-colors"
-        >
-          {isPublishing ? 'Publishing…' : 'Publish & continue →'}
-        </button>
+      <div className="pt-4 border-t border-gray-100 space-y-3">
+        {publishError && (
+          <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+            {publishError}
+          </p>
+        )}
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-gray-400">
+            Ready when you are — you can invite more teammates any time.
+          </p>
+          <button
+            type="button"
+            onClick={publish}
+            disabled={isPublishing}
+            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white text-sm font-semibold rounded-lg transition-colors"
+          >
+            {isPublishing ? 'Publishing…' : 'Publish & continue →'}
+          </button>
+        </div>
       </div>
     </div>
   );

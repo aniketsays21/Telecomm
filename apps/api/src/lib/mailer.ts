@@ -23,7 +23,15 @@ async function getTransport() {
   const pass = process.env.SMTP_PASS;
 
   if (!host || !user || !pass) {
-    // Dev: create a real Ethereal test account — emails are captured, not sent
+    // Production: fail fast so the caller can surface "email not configured"
+    // instead of hanging on a slow Ethereal-account creation network call.
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'SMTP is not configured. Set SMTP_HOST / SMTP_USER / SMTP_PASS (and SMTP_FROM) ' +
+          'on the API service to enable outbound email (invites, CSAT, reply-by-mail).',
+      );
+    }
+    // Dev: create a real Ethereal test account — emails are captured, not sent.
     const testAccount = await nodemailer.createTestAccount();
     _transport = nodemailer.createTransport({
       host: 'smtp.ethereal.email',

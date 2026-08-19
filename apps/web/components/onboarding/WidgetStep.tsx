@@ -1,19 +1,46 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { markWidgetSeenAction } from '@/lib/actions';
 
 type Props = {
   snippet: string;
   workspaceName: string;
+  workspaceId: string;
   onDone: () => void;
 };
 
-export function WidgetStep({ snippet, onDone }: Props) {
+const CLIENT_API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+
+/**
+ * Rebuild the embed snippet from client-side inputs so it can't ever end up
+ * pointing at `http://localhost:4000` in production. The API's server-side
+ * `snippet` is used as a fallback only.
+ *
+ * The customer's site will load `widget.js` from wherever they got the URL —
+ * so the URL the copy button hands them MUST be the API's public URL, which
+ * the browser side of the dashboard always knows via NEXT_PUBLIC_API_URL.
+ */
+function buildSnippet(workspaceId: string): string {
+  return [
+    '<script>',
+    `  window.TelecommConfig = { workspaceId: '${workspaceId}' };`,
+    '</script>',
+    `<script src="${CLIENT_API_URL}/widget.js" async></script>`,
+  ].join('\n');
+}
+
+export function WidgetStep({ snippet, workspaceId, onDone }: Props) {
   const [copied, setCopied] = useState(false);
+  // Prefer the client-built snippet — API-side snippet is fallback only for
+  // dev environments where NEXT_PUBLIC_API_URL isn't set.
+  const displaySnippet = useMemo(
+    () => (workspaceId ? buildSnippet(workspaceId) : snippet),
+    [workspaceId, snippet],
+  );
 
   async function copySnippet() {
-    await navigator.clipboard.writeText(snippet);
+    await navigator.clipboard.writeText(displaySnippet);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
     markWidgetSeenAction().catch(() => {});
@@ -42,7 +69,7 @@ export function WidgetStep({ snippet, onDone }: Props) {
           real workspaceId and the actual API URL for this deployment. */}
       <div className="relative mb-6">
         <pre className="bg-gray-900 text-green-400 text-sm rounded-xl p-5 overflow-x-auto font-mono leading-relaxed">
-          {snippet}
+          {displaySnippet}
         </pre>
         <button
           onClick={copySnippet}

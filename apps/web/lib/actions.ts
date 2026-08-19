@@ -252,12 +252,17 @@ export async function markWidgetSeenAction() {
 export async function completeOnboardingAction() {
   const { getSession } = await import('./session');
   const session = await getSession();
-  if (!session) redirect('/login');
+  if (!session) return { error: 'Not authenticated' };
   const { api } = await import('./api');
-  await api.completeOnboarding(session!.token);
-  // Land admins on the Dashboard (analytics) — the first thing they should see
-  // once live is the shape of what's about to happen, not an empty inbox.
-  redirect(session!.role === 'admin' ? '/analytics' : '/inbox');
+  try {
+    await api.completeOnboarding(session.token);
+  } catch (e: any) {
+    return { error: e?.message ?? 'Could not complete onboarding' };
+  }
+  // Caller navigates on the client — a server-side redirect inside a
+  // useTransition would get swallowed and leave the button "Publishing…"
+  // forever. Returning success lets the client do a router.push cleanly.
+  return { ok: true, next: session.role === 'admin' ? '/analytics' : '/inbox' };
 }
 
 export async function sendMessageAction(conversationId: string, body: string, isInternalNote = false) {
