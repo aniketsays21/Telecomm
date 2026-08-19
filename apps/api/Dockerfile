@@ -42,6 +42,10 @@ RUN pnpm --filter @telecomm/api build
 # does NOT inline (fastify, drizzle, postgres, nodemailer, ...) must still be
 # present at runtime.
 FROM deps AS prod-deps
+# CI=true tells pnpm never to prompt for interactive confirmation. Without it,
+# Railway's non-TTY Docker build aborts with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY
+# when the --prod install prunes devDependencies from the deps-stage node_modules.
+ENV CI=true
 RUN pnpm install --frozen-lockfile --filter @telecomm/api... --prod
 
 # ---------- runner ----------
