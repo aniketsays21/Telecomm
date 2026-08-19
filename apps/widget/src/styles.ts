@@ -71,8 +71,32 @@ export const CSS = `
     align-items: flex-start;
     justify-content: space-between;
   }
-  #tc-header h2 { font-size: 15px; font-weight: 700; line-height: 1.3; }
-  #tc-header p { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+  #tc-header h2 { font-size: 15px; font-weight: 700; line-height: 1.3; display: flex; align-items: center; gap: 8px; }
+  #tc-header p { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+  /* Live hand-off variant — solid forest tone so the customer sees the
+     switch from bot to human at a glance, and a pulsing dot beside the name. */
+  #tc-header.tc-header-live {
+    background: linear-gradient(135deg, #1F3A2E 0%, #2f5a48 100%);
+  }
+  .tc-agent-dot {
+    width: 8px;
+    height: 8px;
+    background: #4ade80;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7);
+    animation: tc-pulse 1.6s ease-out infinite;
+  }
+  @keyframes tc-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6); }
+    70%  { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+  }
+  .tc-msg-author {
+    font-size: 10.5px;
+    color: #4b5563;
+    padding: 0 2px 2px;
+    font-weight: 600;
+  }
   .tc-close {
     background: rgba(255,255,255,0.15);
     border: none;
@@ -107,6 +131,13 @@ export const CSS = `
   .tc-msg { max-width: 84%; display: flex; flex-direction: column; gap: 3px; }
   .tc-msg.tc-user { align-self: flex-end; }
   .tc-msg.tc-bot { align-self: flex-start; }
+  .tc-msg.tc-agent { align-self: flex-start; }
+  .tc-msg.tc-agent .tc-bubble {
+    background: #eef7f2;
+    color: #14261e;
+    border: 1px solid #d8ebe1;
+    border-radius: 14px 14px 14px 4px;
+  }
 
   .tc-bubble {
     padding: 10px 13px;

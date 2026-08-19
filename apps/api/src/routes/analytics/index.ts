@@ -135,6 +135,20 @@ export async function analyticsRoutes(app: FastifyInstance) {
         LIMIT 8
       `), [] as unknown as Awaited<ReturnType<typeof db.execute>>);
 
+    // Sentiment rollup — one bucket per label. Reads the conversation-level
+    // sentiment (which the chat handler keeps as the latest classified turn)
+    // so a conversation that started angry and calmed down doesn't count as
+    // both. NULLs (older conversations from before we classified) are skipped.
+    const sentimentRows = await safe('sentiment', app, () =>
+      db.execute(sql`
+        SELECT sentiment, count(*)::int AS cnt
+        FROM conversations
+        WHERE workspace_id = ${wid}
+          AND created_at >= ${since}
+          AND sentiment IS NOT NULL
+        GROUP BY sentiment
+      `), [] as unknown as Awaited<ReturnType<typeof db.execute>>);
+
     const total = Number(totals.total) || 0;
     const escalated = Number(totals.escalated) || 0;
     const aiResolved = Number(totals.aiResolved) || 0;
@@ -175,6 +189,10 @@ export async function analyticsRoutes(app: FastifyInstance) {
       })),
       topTopics: (topicRows as unknown as Array<Record<string, unknown>>).map((r) => ({
         topic: String(r.topic ?? ''),
+        count: Number(r.cnt ?? 0),
+      })),
+      sentimentBreakdown: (sentimentRows as unknown as Array<Record<string, unknown>>).map((r) => ({
+        sentiment: String(r.sentiment ?? ''),
         count: Number(r.cnt ?? 0),
       })),
     };

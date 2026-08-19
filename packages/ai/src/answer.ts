@@ -90,6 +90,9 @@ export type ExtractedContact = {
   orderId?: string;
 };
 
+/** Sentiment of the customer's most recent turn — powers dashboard rollups. */
+export type Sentiment = 'positive' | 'neutral' | 'negative' | 'frustrated' | 'angry';
+
 export type AIAnswer = {
   answer: string;
   confidence: number;
@@ -99,6 +102,10 @@ export type AIAnswer = {
   extracted?: ExtractedContact;
   /** Short topic label the AI infers ("shipping", "refund", "sizing"…). Powers analytics. */
   topic?: string;
+  /** Detected sentiment of the customer's current message. */
+  sentiment?: Sentiment;
+  /** BCP-47 language tag the AI detected in the customer's message (e.g. 'en', 'es-MX'). */
+  language?: string;
   sources: Array<{
     documentId: string;
     title: string;
@@ -170,6 +177,7 @@ export async function generateAnswer(
     '',
     'How you work:',
     '- Try HARD to resolve the customer\'s problem yourself. You are the first and best line of support; humans are a last resort, not a co-pilot.',
+    '- Detect the language the customer wrote in and REPLY IN THAT SAME LANGUAGE. If they switch mid-conversation, follow their switch. Never switch back to English silently.',
     '- Ground every factual answer in the knowledge base excerpts below. Never invent facts, prices, policies, dates, or product details.',
     '- When an excerpt has a URL, cite it inline as a clickable markdown link: [helpful label](URL). Prefer the article title as the label. Do not paste raw URLs; do not link to sources without a URL.',
     '- Be conversational. Greet on the first turn, use the customer\'s name if you know it, mirror their tone, and answer in 2–5 sentences.',
@@ -193,6 +201,8 @@ export async function generateAnswer(
     '  "needs_human": <true if a human should take over, else false>,',
     '  "escalation_reason": <short string when needs_human is true, else null>,',
     '  "topic": <one lowercase phrase categorizing the customer\'s intent: "shipping" / "returns" / "refund" / "sizing" / "account" / "pricing" / "tech-issue" / "complaint" / "general" — pick the closest>,',
+    '  "sentiment": <one of: "positive" | "neutral" | "negative" | "frustrated" | "angry" — how the CUSTOMER is feeling in their latest message>,',
+    '  "language": <BCP-47 language tag detected in the customer\'s latest message (e.g. "en", "es", "hi", "pt-BR")>,',
     '  "extracted": { "email": <string|null>, "name": <string|null>, "order_id": <string|null> }',
     '}',
   ].filter(Boolean).join('\n');
@@ -221,6 +231,8 @@ export async function generateAnswer(
     needs_human?: boolean;
     escalation_reason?: string | null;
     topic?: string;
+    sentiment?: string;
+    language?: string;
     extracted?: { email?: string | null; name?: string | null; order_id?: string | null };
   } = {};
   try {
@@ -246,6 +258,15 @@ export async function generateAnswer(
     extracted.orderId = parsed.extracted.order_id.trim();
   }
 
+  const allowedSentiments: Sentiment[] = ['positive', 'neutral', 'negative', 'frustrated', 'angry'];
+  const rawSentiment = (parsed.sentiment ?? '').toString().toLowerCase().trim();
+  const sentiment: Sentiment | undefined = (allowedSentiments as string[]).includes(rawSentiment)
+    ? (rawSentiment as Sentiment)
+    : undefined;
+  const rawLang = (parsed.language ?? '').toString().trim();
+  // BCP-47 is a bit forgiving: allow [a-z]{2,3} optionally followed by '-XX'.
+  const language = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(rawLang) ? rawLang : undefined;
+
   return {
     answer: parsed.answer ?? "I'm not sure yet — could you share a bit more about what you're trying to do?",
     confidence,
@@ -253,6 +274,8 @@ export async function generateAnswer(
     escalationReason: shouldEscalate ? (parsed.escalation_reason ?? 'Needs human review') : undefined,
     extracted: Object.keys(extracted).length ? extracted : undefined,
     topic: parsed.topic?.toString().slice(0, 40),
+    sentiment,
+    language,
     sources: chunks.slice(0, 3).map(c => ({
       documentId: c.documentId,
       title: c.title,
@@ -261,4 +284,67 @@ export async function generateAnswer(
       similarity: c.similarity,
     })),
   };
+}
+
+/**
+ * Draft a suggested reply for an agent, grounded in the conversation history
+ * and (optionally) KB excerpts. This is fired when the agent opens a
+ * conversation and clicks "Suggest reply" — the draft goes into their reply
+ * box, they can edit before sending. Distinct from `generateAnswer` because:
+ *   • Persona is "agent's assistant", not "customer's agent" — first person,
+ *     ready-to-send, no "as an AI…" framing.
+ *   • No JSON envelope, no confidence gating — just a string.
+ *   • Never escalates; the human is already here.
+ */
+export async function draftAgentReply(
+  turns: ChatTurn[],
+  chunks: SearchResult[],
+  settings?: { brandName?: string; agentName?: string },
+): Promise<string> {
+  const brand = settings?.brandName ?? 'the team';
+  const agent = settings?.agentName ?? 'the agent';
+
+  const context = chunks.length
+    ? chunks
+        .map((c, i) => {
+          const header = c.url ? `[${i + 1}] ${c.title} — ${c.url}` : `[${i + 1}] ${c.title}`;
+          return `${header}\n${c.content.slice(0, 700)}`;
+        })
+        .join('\n\n---\n\n')
+    : '(No knowledge-base articles matched.)';
+
+  const transcript = turns
+    .slice(-14)
+    .map((t) => `${t.role === 'user' ? 'Customer' : 'Us'}: ${t.content}`)
+    .join('\n');
+
+  const system = [
+    `You are drafting a reply for ${agent}, a support agent at ${brand}, to send to a customer.`,
+    'Write the reply directly — no "here is a suggested reply" preamble, no signature, no "let me know if you have questions" filler.',
+    'Reply in the SAME LANGUAGE the customer used most recently.',
+    'Ground factual claims in the knowledge-base excerpts. Cite articles as inline markdown links like [label](URL) when a URL is provided.',
+    'Match a warm, human, competent tone. 2–5 sentences. Never invent facts, prices, dates, or policies.',
+    'If the customer asked a question you cannot answer from the excerpts, write a reply that (a) acknowledges what they need, (b) asks the one clarifying question that would let you help, or (c) explains what info you\'ll gather next.',
+    'Return the reply text ONLY — no JSON, no quotes around it, no explanation.',
+  ].join('\n');
+
+  const userContent = [
+    'Knowledge base excerpts:',
+    context,
+    '',
+    'Conversation so far:',
+    transcript || '(no prior messages)',
+    '',
+    'Write the reply.',
+  ].join('\n\n');
+
+  const msg = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 500,
+    system,
+    messages: [{ role: 'user', content: userContent }],
+  });
+
+  const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '';
+  return text.trim();
 }

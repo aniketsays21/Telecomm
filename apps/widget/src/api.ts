@@ -9,9 +9,37 @@ export interface ChatResponse {
 
 export interface WidgetMessage {
   id: string;
-  role: 'user' | 'bot';
+  /**
+   * user  = the customer themself
+   * bot   = the AI assistant
+   * agent = a human teammate replying from the dashboard (live hand-off)
+   */
+  role: 'user' | 'bot' | 'agent';
   body: string;
   createdAt: string;
+  /** Display name of the agent, when role === 'agent'. */
+  agentName?: string;
+}
+
+/** A proactive-chat trigger rule, evaluated in the browser. */
+export interface WidgetTrigger {
+  id: string;
+  message: string;
+  conditions: { secondsOnPage?: number; urlPattern?: string };
+}
+
+export async function fetchWidgetTriggers(
+  apiUrl: string,
+  workspaceId: string,
+): Promise<WidgetTrigger[]> {
+  try {
+    const res = await fetch(`${apiUrl}/widget/triggers?workspaceId=${encodeURIComponent(workspaceId)}`);
+    if (!res.ok) return [];
+    const data = await res.json() as { triggers?: WidgetTrigger[] };
+    return data.triggers ?? [];
+  } catch {
+    return [];
+  }
 }
 
 export async function sendMessage(

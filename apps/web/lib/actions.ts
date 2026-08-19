@@ -4,6 +4,108 @@ import { redirect } from 'next/navigation';
 import { api } from './api';
 import { setSession, clearSession } from './session';
 
+// ---- Webhooks -------------------------------------------------------------
+
+export async function createWebhookAction(input: { url: string; events: string[]; description?: string }) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    const res = await api.createWebhook(session.token, input);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/webhooks');
+    return { webhook: res.webhook };
+  } catch (e: any) {
+    return { error: e?.message ?? 'Could not create webhook' };
+  }
+}
+
+export async function updateWebhookAction(
+  id: string,
+  patch: Partial<{ url: string; events: string[]; enabled: boolean; description: string }>,
+) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    await api.updateWebhook(session.token, id, patch);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/webhooks');
+    return { ok: true };
+  } catch (e: any) {
+    return { error: e?.message ?? 'Could not update webhook' };
+  }
+}
+
+export async function deleteWebhookAction(id: string) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return;
+  await api.deleteWebhook(session.token, id);
+  const { revalidatePath } = await import('next/cache');
+  revalidatePath('/settings/webhooks');
+}
+
+// ---- Proactive triggers ---------------------------------------------------
+
+export async function createTriggerAction(input: {
+  name: string;
+  message: string;
+  conditions: { secondsOnPage?: number; urlPattern?: string };
+  enabled?: boolean;
+}) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    const res = await api.createTrigger(session.token, input);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/triggers');
+    return { trigger: res.trigger };
+  } catch (e: any) {
+    return { error: e?.message ?? 'Could not create trigger' };
+  }
+}
+
+export async function updateTriggerAction(
+  id: string,
+  patch: Partial<{ name: string; message: string; conditions: { secondsOnPage?: number; urlPattern?: string }; enabled: boolean }>,
+) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    await api.updateTrigger(session.token, id, patch);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/triggers');
+    return { ok: true };
+  } catch (e: any) {
+    return { error: e?.message ?? 'Could not update trigger' };
+  }
+}
+
+export async function deleteTriggerAction(id: string) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return;
+  await api.deleteTrigger(session.token, id);
+  const { revalidatePath } = await import('next/cache');
+  revalidatePath('/settings/triggers');
+}
+
+export async function suggestReplyAction(conversationId: string): Promise<
+  { draft: string; sources: Array<{ title: string; url: string | null }> } | { error: string }
+> {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    return await api.suggestReply(session.token, conversationId);
+  } catch (e: any) {
+    return { error: e?.message ?? 'Could not draft a reply.' };
+  }
+}
+
 // useActionState passes (prevState, formData) — prevState is first arg
 export async function signupAction(_prev: unknown, formData: FormData) {
   const name = formData.get('name') as string;

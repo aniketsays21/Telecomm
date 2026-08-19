@@ -5,3 +5,5 @@ export * from './conversations';
 export * from './knowledge';
 export * from './events';
 export * from './gmail';
+export * from './webhooks';
+export * from './triggers';

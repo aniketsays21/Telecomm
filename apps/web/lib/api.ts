@@ -127,6 +127,13 @@ export const api = {
       { method: 'POST', body: JSON.stringify(body) }, token
     ),
 
+  suggestReply: (token: string, conversationId: string) =>
+    request<{ draft: string; sources: Array<{ title: string; url: string | null }> }>(
+      `/inbox/conversations/${conversationId}/suggest-reply`,
+      { method: 'POST', body: '{}' },
+      token,
+    ),
+
   updateConversation: (token: string, id: string, updates: {
     status?: 'open' | 'snoozed' | 'resolved';
     assigneeId?: string | null;
@@ -200,6 +207,51 @@ export const api = {
 
   gmailDeleteRule: (token: string, id: string) =>
     fetch(`${API}/gmail/rules/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  // Webhooks
+  listWebhooks: (token: string) =>
+    request<{ webhooks: Webhook[]; events: string[] }>('/webhooks', {}, token),
+
+  createWebhook: (token: string, body: { url: string; events: string[]; description?: string }) =>
+    request<{ webhook: Webhook }>('/webhooks', { method: 'POST', body: JSON.stringify(body) }, token),
+
+  updateWebhook: (token: string, id: string, patch: Partial<{ url: string; events: string[]; enabled: boolean; description: string }>) =>
+    request<{ ok: boolean }>(`/webhooks/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, token),
+
+  deleteWebhook: (token: string, id: string) =>
+    fetch(`${API}/webhooks/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
+  listWebhookDeliveries: (token: string, id: string) =>
+    request<{ deliveries: WebhookDelivery[] }>(`/webhooks/${id}/deliveries`, {}, token),
+
+  // Proactive triggers
+  listTriggers: (token: string) =>
+    request<{ triggers: WidgetTriggerRow[] }>('/triggers', {}, token),
+
+  createTrigger: (token: string, body: {
+    name: string;
+    message: string;
+    conditions: { secondsOnPage?: number; urlPattern?: string };
+    enabled?: boolean;
+  }) =>
+    request<{ trigger: WidgetTriggerRow }>('/triggers', { method: 'POST', body: JSON.stringify(body) }, token),
+
+  updateTrigger: (token: string, id: string, patch: Partial<{
+    name: string;
+    message: string;
+    conditions: { secondsOnPage?: number; urlPattern?: string };
+    enabled: boolean;
+  }>) =>
+    request<{ ok: boolean }>(`/triggers/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, token),
+
+  deleteTrigger: (token: string, id: string) =>
+    fetch(`${API}/triggers/${id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     }),
@@ -314,6 +366,7 @@ export type AnalyticsData = {
   channelSplit: Array<{ channel: string; count: number }>;
   topContacts: Array<{ id: string; label: string; email: string | null; count: number }>;
   topTopics: Array<{ topic: string; count: number }>;
+  sentimentBreakdown?: Array<{ sentiment: string; count: number }>;
 };
 
 export type WorkspaceSettings = {
@@ -375,6 +428,40 @@ export type GmailRule = {
   createdAt: string;
   assigneeName: string | null;
   assigneeEmail: string | null;
+};
+
+export type Webhook = {
+  id: string;
+  workspaceId: string;
+  url: string;
+  secret: string;
+  events: string[];
+  enabled: boolean;
+  description: string | null;
+  createdAt: string;
+  lastDeliveryAt: string | null;
+  lastDeliveryStatus: number | null;
+  lastDeliveryError: string | null;
+  consecutiveFailures: number;
+};
+
+export type WebhookDelivery = {
+  id: string;
+  event: string;
+  statusCode: number | null;
+  error: string | null;
+  attempt: number;
+  deliveredAt: string;
+};
+
+export type WidgetTriggerRow = {
+  id: string;
+  workspaceId: string;
+  name: string;
+  enabled: boolean;
+  conditions: { secondsOnPage?: number; urlPattern?: string };
+  message: string;
+  createdAt: string;
 };
 
 export type CannedResponse = {

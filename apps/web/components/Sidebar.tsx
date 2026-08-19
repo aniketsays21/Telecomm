@@ -27,9 +27,10 @@ const adminNavGroups: Array<{ eyebrow: string; items: { href: string; label: str
   {
     eyebrow: 'Channels',
     items: [
-      { href: '/settings/widget',  label: 'Chat widget' },
-      { href: '/settings/email',   label: 'Email' },
-      { href: '/settings/gmail',   label: 'Gmail' },
+      { href: '/settings/widget',   label: 'Chat widget' },
+      { href: '/settings/email',    label: 'Email' },
+      { href: '/settings/gmail',    label: 'Gmail' },
+      { href: '/settings/triggers', label: 'Proactive triggers' },
     ],
   },
   {
@@ -38,6 +39,7 @@ const adminNavGroups: Array<{ eyebrow: string; items: { href: string; label: str
       { href: '/settings/knowledge', label: 'Knowledge' },
       { href: '/settings/canned',    label: 'Canned replies' },
       { href: '/settings/sla',       label: 'SLA' },
+      { href: '/settings/webhooks',  label: 'Webhooks' },
     ],
   },
 ];

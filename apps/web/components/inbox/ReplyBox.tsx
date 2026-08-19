@@ -2,7 +2,7 @@
 
 import { useState, useRef, useTransition, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { sendMessageAction, updateConversationAction } from '@/lib/actions';
+import { sendMessageAction, updateConversationAction, suggestReplyAction } from '@/lib/actions';
 import type { CannedResponse } from '@/lib/api';
 
 type Props = {
@@ -21,6 +21,34 @@ export function ReplyBox({ conversationId, status, cannedResponses = [] }: Props
   const [showPicker, setShowPicker] = useState(false);
   const [pickerQuery, setPickerQuery] = useState('');
   const [pickerIndex, setPickerIndex] = useState(0);
+
+  // AI draft state — sources travel with the draft so the agent can see (and
+  // click through to verify) the KB articles the AI leaned on.
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [suggestSources, setSuggestSources] = useState<Array<{ title: string; url: string | null }>>([]);
+
+  async function suggest() {
+    setSuggestError(null);
+    setIsSuggesting(true);
+    try {
+      const res = await suggestReplyAction(conversationId);
+      if ('error' in res) {
+        setSuggestError(res.error);
+        return;
+      }
+      setText(res.draft);
+      setSuggestSources(res.sources);
+      // Focus + move caret to end so the agent can start editing immediately.
+      const ta = textareaRef.current;
+      if (ta) {
+        ta.focus();
+        setTimeout(() => { ta.selectionStart = ta.selectionEnd = ta.value.length; }, 0);
+      }
+    } finally {
+      setIsSuggesting(false);
+    }
+  }
 
   const filteredCanned = cannedResponses.filter((r) => {
     if (!pickerQuery) return true;
@@ -169,11 +197,26 @@ export function ReplyBox({ conversationId, status, cannedResponses = [] }: Props
         >
           Internal note
         </button>
-        {cannedResponses.length > 0 && (
-          <span className="ml-auto pb-2 text-[11px]" style={{ color: 'var(--dust)' }}>
-            Type <kbd className="font-numeric px-1" style={{ background: 'var(--bone)', border: '1px solid var(--rule)' }}>/</kbd> for canned
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-4 pb-2">
+          {cannedResponses.length > 0 && (
+            <span className="text-[11px]" style={{ color: 'var(--dust)' }}>
+              Type <kbd className="font-numeric px-1" style={{ background: 'var(--bone)', border: '1px solid var(--rule)' }}>/</kbd> for canned
+            </span>
+          )}
+          {!isNote && (
+            <button
+              type="button"
+              onClick={suggest}
+              disabled={isSuggesting || isPending}
+              className="text-[11px] flex items-center gap-1.5 transition-colors disabled:opacity-60"
+              style={{ color: 'var(--forest)' }}
+              title="Draft a reply from your knowledge base"
+            >
+              <span aria-hidden="true" style={{ fontSize: 12 }}>✧</span>
+              {isSuggesting ? 'Drafting…' : 'Suggest reply'}
+            </button>
+          )}
+        </div>
       </div>
 
       <textarea
@@ -189,6 +232,31 @@ export function ReplyBox({ conversationId, status, cannedResponses = [] }: Props
           background: isNote ? 'var(--ochre-soft)' : 'transparent',
         }}
       />
+
+      {(suggestError || suggestSources.length > 0) && (
+        <div className="px-6 pb-2">
+          {suggestError && (
+            <p className="text-xs" style={{ color: 'var(--brick)' }}>{suggestError}</p>
+          )}
+          {suggestSources.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-1">
+              <span className="text-[11px]" style={{ color: 'var(--dust)' }}>Drafted from:</span>
+              {suggestSources.filter((s) => s.url).map((s, i) => (
+                <a
+                  key={i}
+                  href={s.url ?? '#'}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] link-underline"
+                  style={{ color: 'var(--forest)' }}
+                >
+                  {s.title}
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div
         className="flex items-center justify-between px-6 pb-4"

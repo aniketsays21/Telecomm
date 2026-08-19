@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { eq, and, desc, sql, or, ilike } from 'drizzle-orm';
 import { db } from '@telecomm/db';
-import { conversations, messages, contacts, users, conversationSummaries, contactPageViews } from '@telecomm/db/schema';
+import { conversations, messages, contacts, users, conversationSummaries, contactPageViews, workspaces } from '@telecomm/db/schema';
 import { requireAuth } from '../../middleware/auth.js';
 import { broadcastToWorkspace } from '../ws/index.js';
 import {
@@ -16,6 +16,9 @@ import { buildReferences } from '../../lib/inbound-email.js';
 import { isNotNull } from 'drizzle-orm';
 import { getFreshAccessToken } from '../../lib/gmail-oauth.js';
 import { sendMessage as gmailSend, GmailApiError } from '../../lib/gmail-client.js';
+import { emitWebhookEvent } from '../../lib/webhooks.js';
+import { draftAgentReply } from '@telecomm/ai';
+import { searchChunks } from '../../lib/search.js';
 
 /**
  * Newest message in the thread that carries a Message-ID, so an agent reply can
@@ -389,7 +392,89 @@ export async function inboxRoutes(app: FastifyInstance) {
     // Broadcast to all dashboard clients connected to this workspace
     broadcastToWorkspace(session.workspaceId, { type: 'message', conversationId: id, message: msg });
 
+    // Notify webhook subscribers — split events so a receiver can choose to
+    // ignore internal notes if they want to.
+    if (!body.data.isInternalNote) {
+      emitWebhookEvent(session.workspaceId, 'message.agent_reply', {
+        conversationId: id,
+        messageId: msg.id,
+        agentId: session.userId,
+        body: body.data.body,
+      });
+    }
+    emitWebhookEvent(session.workspaceId, 'message.created', {
+      conversationId: id,
+      messageId: msg.id,
+      author: body.data.isInternalNote ? 'agent_internal' : 'agent',
+      body: body.data.body,
+    });
+
     return msg;
+  });
+
+  // POST /inbox/conversations/:id/suggest-reply — AI draft for the agent.
+  // Grounds the draft in the same KB the customer-facing bot uses, but
+  // written for the agent to send directly (no "as an AI" framing).
+  app.post('/inbox/conversations/:id/suggest-reply', async (request, reply) => {
+    const session = requireAuth(request, reply);
+    if (!session) return;
+    const { id } = request.params as { id: string };
+
+    const [conv] = await db
+      .select({ id: conversations.id, contactId: conversations.contactId })
+      .from(conversations)
+      .where(and(eq(conversations.id, id), eq(conversations.workspaceId, session.workspaceId)))
+      .limit(1);
+    if (!conv) return reply.code(404).send({ error: 'Not found' });
+
+    const [wsRow] = await db
+      .select({ name: workspaces.name })
+      .from(workspaces)
+      .where(eq(workspaces.id, session.workspaceId))
+      .limit(1);
+    const brandName = wsRow?.name ?? 'the team';
+
+    const [me] = await db
+      .select({ name: users.name })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1);
+
+    const priorRows = await db
+      .select({ authorType: messages.authorType, body: messages.body })
+      .from(messages)
+      .where(and(eq(messages.conversationId, id), eq(messages.isInternalNote, false)))
+      .orderBy(messages.createdAt);
+
+    if (priorRows.length === 0) {
+      return reply.code(400).send({ error: 'No messages in this conversation yet.' });
+    }
+
+    // Use the most recent customer message as the retrieval query. Falling
+    // back to the last message overall keeps a hand-off flow (agent → agent)
+    // from returning nothing.
+    const lastCustomerTurn = [...priorRows].reverse().find((r) => r.authorType === 'contact');
+    const searchQuery = (lastCustomerTurn?.body ?? priorRows[priorRows.length - 1].body).slice(0, 500);
+    const chunks = await searchChunks(session.workspaceId, searchQuery, 5);
+
+    const history = priorRows.slice(-12).map((r) => ({
+      role: (r.authorType === 'contact' ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: r.body,
+    }));
+
+    try {
+      const draft = await draftAgentReply(history, chunks, { brandName, agentName: me?.name ?? undefined });
+      return {
+        draft,
+        sources: chunks
+          .filter((c) => !!c.url)
+          .slice(0, 3)
+          .map((c) => ({ title: c.title, url: c.url })),
+      };
+    } catch (err) {
+      request.log.error({ err }, 'draft reply failed');
+      return reply.code(502).send({ error: 'Could not generate a draft right now.' });
+    }
   });
 
   // PATCH /inbox/conversations/:id — update status, assignee, priority
@@ -430,6 +515,18 @@ export async function inboxRoutes(app: FastifyInstance) {
       .returning();
 
     if (!updated) return reply.code(404).send({ error: 'Not found' });
+
+    // Fire webhooks on lifecycle changes so external systems (CRMs,
+    // ticketing tools, Slack) can react. Only emit on the transitions the
+    // caller actually made — otherwise a PATCH that only reassigned would
+    // re-emit resolved every time.
+    if (body.data.status === 'resolved') {
+      emitWebhookEvent(session.workspaceId, 'conversation.resolved', {
+        conversationId: id,
+        resolvedBy: 'agent',
+        agentId: session.userId,
+      });
+    }
 
     // Send CSAT email when resolving a conversation that has a contact email
     if (body.data.status === 'resolved') {

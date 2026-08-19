@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
-import { sendMessage, fetchNewMessages } from './api';
+import { sendMessage, fetchNewMessages, fetchWidgetTriggers, type WidgetTrigger } from './api';
 
 interface Msg {
   id: string;
-  role: 'user' | 'bot';
+  role: 'user' | 'bot' | 'agent';
   body: string;
   time: string;
   error?: boolean;
+  /** Display name of the agent, when role === 'agent'. */
+  agentName?: string;
   /** Optional list of KB articles the AI cited when composing this reply. */
   sources?: Array<{ title: string; url?: string }>;
 }
@@ -122,6 +124,29 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
   // Unread count for the launcher badge — bumps every time a bot/agent message
   // arrives while the window is closed, resets to 0 when the customer opens it.
   const [unread, setUnread] = useState(0);
+  // First human agent who joined the thread — powers the "Aniket is here"
+  // hand-off banner. Sticky: once a real person joins, we keep showing them
+  // even after they reply, because the AI badge would feel like a downgrade.
+  const [liveAgent, setLiveAgent] = useState<string | null>(null);
+  // Proactive-trigger scheduling. Loaded once per session and de-duped in
+  // localStorage so a returning visitor doesn't get the same nudge every
+  // page they touch. Only fires if the widget is currently closed.
+  const triggerFiredKey = `_tc_trig_${workspaceId}`;
+  const alreadyFiredIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(triggerFiredKey);
+      if (stored) alreadyFiredIds.current = new Set(JSON.parse(stored));
+    } catch { /* fresh set */ }
+  }, [triggerFiredKey]);
+  const [triggers, setTriggers] = useState<WidgetTrigger[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchWidgetTriggers(apiUrl, workspaceId).then((list) => {
+      if (!cancelled) setTriggers(list);
+    });
+    return () => { cancelled = true; };
+  }, [apiUrl, workspaceId]);
 
   // Most recent server-issued timestamp we've displayed. The polling loop
   // asks the server "anything newer than this?" — the ref avoids re-triggering
@@ -138,6 +163,53 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Evaluate proactive triggers once triggers have loaded. We check every
+  // second — cheap, and the visitor's on-page time is only meaningful at
+  // that granularity anyway. Firing is one-shot per rule per browser
+  // (persisted in localStorage) so a returning visitor doesn't get spammed.
+  useEffect(() => {
+    if (triggers.length === 0) return;
+    const startedAt = Date.now();
+    const timer = setInterval(() => {
+      // Only fire if widget is closed AND no conversation is going yet AND
+      // the tab is visible. Once the customer is chatting, further nudges
+      // would be interruptive.
+      if (openRef.current || conversationId || document.hidden) return;
+      const seconds = Math.floor((Date.now() - startedAt) / 1000);
+      const path = typeof window !== 'undefined' ? window.location.href : '';
+      const ready = triggers.find((t) => {
+        if (alreadyFiredIds.current.has(t.id)) return false;
+        const c = t.conditions ?? {};
+        if (c.secondsOnPage != null && seconds < c.secondsOnPage) return false;
+        if (c.urlPattern) {
+          const p = c.urlPattern.trim();
+          if (p.startsWith('/') && p.endsWith('/') && p.length > 2) {
+            // /regex/ form — anchored anywhere, case-insensitive.
+            try {
+              if (!new RegExp(p.slice(1, -1), 'i').test(path)) return false;
+            } catch { return false; }
+          } else if (!path.toLowerCase().includes(p.toLowerCase())) {
+            return false;
+          }
+        }
+        return true;
+      });
+      if (!ready) return;
+
+      alreadyFiredIds.current.add(ready.id);
+      try {
+        localStorage.setItem(triggerFiredKey, JSON.stringify([...alreadyFiredIds.current]));
+      } catch { /* private mode, ignore */ }
+
+      setMsgs((prev) => [
+        ...prev,
+        { id: `trig-${ready.id}`, role: 'bot', body: ready.message, time: fmt() },
+      ]);
+      setOpen(true);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [triggers, conversationId, triggerFiredKey]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -170,7 +242,8 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
           lastSeenAtRef.current,
         );
         if (cancelled || news.length === 0) return;
-        let unseenBotArrivals = 0;
+        let unseenReplies = 0;
+        let joinedAgent: string | null = null;
         setMsgs(prev => {
           const additions: Msg[] = [];
           for (const m of news) {
@@ -191,12 +264,19 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
               id: m.id,
               role: m.role,
               body: m.body,
+              agentName: m.agentName,
               time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             });
-            if (m.role === 'bot') unseenBotArrivals++;
+            if (m.role === 'agent' && !joinedAgent) {
+              joinedAgent = m.agentName ?? 'A teammate';
+            }
+            if (m.role === 'bot' || m.role === 'agent') unseenReplies++;
           }
           return additions.length ? [...prev, ...additions] : prev;
         });
+        if (joinedAgent) setLiveAgent(joinedAgent);
+        // Rename for clarity — everything unseen goes to the badge, not just AI.
+        const unseenBotArrivals = unseenReplies;
         // Only badge messages the customer hasn't seen yet — if the panel is
         // open at this moment, they're already looking.
         if (!openRef.current && unseenBotArrivals > 0) {
@@ -281,11 +361,25 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
 
       {/* Chat window */}
       <div id="tc-window" class={open ? '' : 'tc-hidden'} role="dialog" aria-label="Support chat">
-        {/* Header */}
-        <div id="tc-header">
+        {/* Header — swaps into a "live agent joined" state as soon as a human
+             replies for the first time. Sticky so the AI badge doesn't reappear
+             mid-conversation and confuse the customer. */}
+        <div id="tc-header" class={liveAgent ? 'tc-header-live' : ''}>
           <div>
-            <h2>Support Chat</h2>
-            <p>We typically reply within a few minutes</p>
+            {liveAgent ? (
+              <>
+                <h2>
+                  <span class="tc-agent-dot" aria-hidden="true" />
+                  {liveAgent} is here
+                </h2>
+                <p>You&apos;re now chatting with a human — messages go straight to them.</p>
+              </>
+            ) : (
+              <>
+                <h2>Support Chat</h2>
+                <p>We typically reply within a few minutes</p>
+              </>
+            )}
           </div>
           <button class="tc-close" onClick={() => setOpen(false)} aria-label="Close">
             <CloseIcon />
@@ -296,8 +390,11 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
         <div id="tc-messages">
           {msgs.map(m => (
             <div key={m.id} class={`tc-msg tc-${m.role}`}>
+              {m.role === 'agent' && m.agentName && (
+                <div class="tc-msg-author">{m.agentName}</div>
+              )}
               <div class={`tc-bubble${m.error ? ' tc-err' : ''}`}>
-                {m.role === 'bot'
+                {m.role !== 'user'
                   ? parseRich(m.body).map((p, i) =>
                       p.type === 'link' && p.href ? (
                         <a

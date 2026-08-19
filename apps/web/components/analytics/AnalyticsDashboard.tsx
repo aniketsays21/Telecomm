@@ -163,6 +163,60 @@ function ChannelPie({ data }: { data: AnalyticsData['channelSplit'] }) {
   );
 }
 
+// Segmented horizontal bar for sentiment distribution. Neutral tones for
+// neutral/positive so the palette doesn't scream; brick and ochre pull
+// attention to negative/frustrated/angry — the ones an operator should act on.
+function SentimentStrip({ data }: { data: Array<{ sentiment: string; count: number }> }) {
+  const order: Array<{ key: string; label: string; color: string; text: string }> = [
+    { key: 'positive',   label: 'Positive',   color: 'var(--forest)',      text: 'var(--paper)' },
+    { key: 'neutral',    label: 'Neutral',    color: 'var(--dust)',        text: 'var(--ink)' },
+    { key: 'negative',   label: 'Negative',   color: 'var(--ochre)',       text: 'var(--ink)' },
+    { key: 'frustrated', label: 'Frustrated', color: '#C67341',            text: 'var(--paper)' },
+    { key: 'angry',      label: 'Angry',      color: 'var(--brick)',       text: 'var(--paper)' },
+  ];
+  const total = data.reduce((s, r) => s + r.count, 0);
+  if (total === 0) {
+    return (
+      <p className="text-sm py-8 italic text-center" style={{ color: 'var(--dust)' }}>
+        No sentiment classified yet — every new customer message will get one.
+      </p>
+    );
+  }
+  const bucket = new Map(data.map((r) => [r.sentiment.toLowerCase(), r.count]));
+  const rows = order
+    .map((o) => ({ ...o, count: bucket.get(o.key) ?? 0 }))
+    .filter((r) => r.count > 0);
+
+  return (
+    <div>
+      <div className="flex w-full overflow-hidden" style={{ height: 44, border: '1px solid var(--rule)' }}>
+        {rows.map((r) => {
+          const pct = (r.count / total) * 100;
+          return (
+            <div
+              key={r.key}
+              className="flex items-center justify-center text-[11px] font-numeric"
+              style={{ width: `${pct}%`, background: r.color, color: r.text, minWidth: '2rem' }}
+              title={`${r.label} — ${r.count}`}
+            >
+              {pct >= 6 ? `${Math.round(pct)}%` : ''}
+            </div>
+          );
+        })}
+      </div>
+      <ul className="flex flex-wrap gap-x-6 gap-y-2 mt-4">
+        {rows.map((r) => (
+          <li key={r.key} className="flex items-baseline gap-2 text-xs" style={{ color: 'var(--ink)' }}>
+            <span className="w-2 h-2 rounded-full" style={{ background: r.color }} aria-hidden="true" />
+            <span>{r.label}</span>
+            <span className="font-numeric" style={{ color: 'var(--ash)' }}>{r.count}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function BarChart({ data }: { data: AnalyticsData['daily'] }) {
   if (!data.length) {
     return (
@@ -244,6 +298,7 @@ export function AnalyticsDashboard({ initial }: Props) {
   const channelSplit = data.channelSplit ?? [];
   const topContacts = data.topContacts ?? [];
   const topTopics = data.topTopics ?? [];
+  const sentimentBreakdown = data.sentimentBreakdown ?? [];
 
   const resolutionLabel =
     summary.avgResolutionMinutes == null ? '—'
@@ -307,6 +362,19 @@ export function AnalyticsDashboard({ initial }: Props) {
         <div className="p-6" style={{ background: 'var(--paper)', border: '1px solid var(--rule)' }}>
           <BarChart data={daily} />
         </div>
+      </section>
+
+      {/* Sentiment strip — one horizontal bar with each label as a segment,
+          proportional to its share of conversations. Reads faster than a
+          five-line list. */}
+      <section>
+        <div className="flex items-baseline justify-between mb-4">
+          <h3 className="font-display text-2xl italic" style={{ color: 'var(--ink)' }}>How customers are feeling</h3>
+          <p className="text-xs" style={{ color: 'var(--ash)' }}>
+            {sentimentBreakdown.reduce((s, r) => s + r.count, 0)} classified
+          </p>
+        </div>
+        <SentimentStrip data={sentimentBreakdown} />
       </section>
 
       {/* Top problems + top contacts, editorial two-column */}

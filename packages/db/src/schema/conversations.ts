@@ -65,6 +65,10 @@ export const messages = pgTable('messages', {
   readAt: timestamp('read_at', { withTimezone: true }),
   aiConfidence: text('ai_confidence'),
   aiSources: jsonb('ai_sources').$type<AiSource[]>().default([]),
+  // Rolled up on the conversation but stored per-message so the dashboard
+  // can render sentiment trajectories over time. One of:
+  // 'positive' | 'neutral' | 'negative' | 'frustrated' | 'angry'.
+  sentiment: text('sentiment'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('messages_conversation_idx').on(t.conversationId),

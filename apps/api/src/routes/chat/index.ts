@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db } from '@telecomm/db';
-import { workspaces, contacts, conversations, messages, conversationSummaries, contactPageViews } from '@telecomm/db/schema';
+import { workspaces, contacts, conversations, messages, conversationSummaries, contactPageViews, users } from '@telecomm/db/schema';
 import { generateAnswer, summarizeConversation } from '@telecomm/ai';
 import { searchChunks } from '../../lib/search.js';
 import { Queue } from 'bullmq';
@@ -10,6 +10,7 @@ import { QUEUES } from '@telecomm/shared';
 import { broadcastToWorkspace } from '../ws/index.js';
 import { redisConnection } from '../../lib/redis.js';
 import { pickBestAgent } from '../../lib/assign.js';
+import { emitWebhookEvent } from '../../lib/webhooks.js';
 
 const ingestQueue = new Queue(QUEUES.INGEST, { connection: redisConnection() });
 
@@ -66,6 +67,7 @@ export async function chatRoutes(app: FastifyInstance) {
       ))
       .limit(1);
 
+    let conversationJustCreated = false;
     if (!conversation) {
       const slaSeconds = (ws.settings as any)?.defaultSlaChat ?? 4 * 3600;
       const slaDueAt = new Date(Date.now() + slaSeconds * 1000);
@@ -78,16 +80,18 @@ export async function chatRoutes(app: FastifyInstance) {
         lastMessageAt: new Date(),
         slaDueAt,
       }).returning();
+      conversationJustCreated = true;
     }
 
-    // Save customer message
-    await db.insert(messages).values({
+    // Save customer message — sentiment gets patched in after the AI call
+    // because the AI response is where the classification happens.
+    const [customerMsg] = await db.insert(messages).values({
       conversationId: conversation.id,
       workspaceId,
       authorType: 'contact',
       authorId: contact.id,
       body: message,
-    });
+    }).returning({ id: messages.id });
 
     // RAG: embed the query → search → generate answer
     let replyText: string;
@@ -137,9 +141,19 @@ export async function chatRoutes(app: FastifyInstance) {
         }
       }
 
+      // Persist the sentiment classification on the customer's message and
+      // on the conversation itself. The conversation column is a rolling
+      // "latest sentiment" so the inbox and dashboard don't have to walk
+      // messages to answer "how are they feeling now?".
+      if (aiAnswer.sentiment) {
+        await db.update(messages).set({ sentiment: aiAnswer.sentiment })
+          .where(eq(messages.id, customerMsg.id));
+      }
+
       // Attach the AI's inferred topic as a tag so analytics can group by it.
       // We de-dupe against existing tags to avoid growing the array unboundedly.
       const nextConvoUpdate: Record<string, unknown> = { lastMessageAt: new Date() };
+      if (aiAnswer.sentiment) nextConvoUpdate.sentiment = aiAnswer.sentiment;
       if (aiAnswer.topic) {
         const existingTags = (conversation.tags ?? []) as string[];
         if (!existingTags.includes(aiAnswer.topic)) {
@@ -269,6 +283,28 @@ export async function chatRoutes(app: FastifyInstance) {
       return out;
     })();
 
+    // Fan out to any workspace webhooks. Non-blocking — the customer already
+    // has their reply and each attempt is retried in the background.
+    if (conversationJustCreated) {
+      emitWebhookEvent(workspaceId, 'conversation.created', {
+        conversationId: conversation.id,
+        channel: 'chat',
+        contact: { id: contact.id, email: contact.email, name: contact.name },
+      });
+    }
+    emitWebhookEvent(workspaceId, 'message.created', {
+      conversationId: conversation.id,
+      messageId: customerMsg.id,
+      author: 'contact',
+      body: message,
+    });
+    if (escalated) {
+      emitWebhookEvent(workspaceId, 'conversation.escalated', {
+        conversationId: conversation.id,
+        reason: 'AI hand-off',
+      });
+    }
+
     return {
       conversationId: conversation.id,
       reply: replyText,
@@ -317,10 +353,13 @@ export async function chatRoutes(app: FastifyInstance) {
       .select({
         id: messages.id,
         authorType: messages.authorType,
+        authorId: messages.authorId,
         body: messages.body,
         createdAt: messages.createdAt,
+        agentName: users.name,
       })
       .from(messages)
+      .leftJoin(users, eq(users.id, messages.authorId))
       .where(and(
         eq(messages.conversationId, conversationId),
         // Only surface messages the customer should see; internal notes stay
@@ -333,11 +372,14 @@ export async function chatRoutes(app: FastifyInstance) {
     return {
       messages: newer.map((m) => ({
         id: m.id,
-        // Map the API-side taxonomy to the widget's simple two-role model:
-        // contact = the customer themself (already displayed optimistically),
-        // ai/agent = the "bot" side of the widget UI.
-        role: m.authorType === 'contact' ? 'user' : 'bot',
+        // Map the API-side taxonomy to the widget's roles. Human agent
+        // replies are now their own role so the widget can render a live
+        // hand-off banner ("Aniket is here") instead of hiding the switch.
+        role: m.authorType === 'contact' ? 'user'
+            : m.authorType === 'agent'   ? 'agent'
+            : 'bot',
         body: m.body,
+        agentName: m.authorType === 'agent' ? (m.agentName ?? undefined) : undefined,
         createdAt: m.createdAt.toISOString(),
       })),
     };

@@ -18,6 +18,8 @@ import { analyticsRoutes } from './routes/analytics/index.js';
 import { inboundEmailRoutes } from './routes/inbound/email.js';
 import { csatRoutes } from './routes/csat/index.js';
 import { gmailRoutes } from './routes/gmail/index.js';
+import { webhooksRoutes } from './routes/webhooks/index.js';
+import { triggersRoutes } from './routes/triggers/index.js';
 import { startWorkers } from './workers/index.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -70,6 +72,8 @@ async function build() {
   await app.register(inboundEmailRoutes);
   await app.register(csatRoutes);
   await app.register(gmailRoutes);
+  await app.register(webhooksRoutes);
+  await app.register(triggersRoutes);
 
   return app;
 }
