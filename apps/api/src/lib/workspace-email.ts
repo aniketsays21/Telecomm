@@ -1,4 +1,4 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '@telecomm/db';
 import { workspaces } from '@telecomm/db/schema';
 import type { WorkspaceSettings } from '@telecomm/db/schema';
@@ -60,13 +60,14 @@ export async function loadWorkspaceSender(workspaceId: string): Promise<Workspac
 export async function findWorkspaceBySupportEmail(candidates: string[]) {
   if (candidates.length === 0) return undefined;
   const normalized = candidates.map((c) => c.toLowerCase());
-  // The `::text[]` cast is required — without it Postgres cannot infer that the
-  // bound parameter is an array and rejects the ANY() expression at plan time
-  // with SQLSTATE 42809 ("op ANY/ALL (array) requires array on right side").
+  // inArray() expands the JS array into individual bound parameters
+  // (`... IN ($1, $2, …)`), which sidesteps two adjacent Postgres pitfalls with
+  // `= ANY(…)`: an untyped bound array (SQLSTATE 42809) and a record-typed
+  // parameter list that can't be cast to text[] (SQLSTATE 42846).
   const matches = await db
     .select()
     .from(workspaces)
-    .where(sql`lower(${workspaces.settings} ->> 'supportEmail') = ANY(${normalized}::text[])`);
+    .where(inArray(sql`lower(${workspaces.settings} ->> 'supportEmail')`, normalized));
   if (matches.length <= 1) return matches[0];
   // Mail addressed to two brands at once: prefer the most authoritative
   // recipient, which is the earliest candidate (envelope before To before Cc).
