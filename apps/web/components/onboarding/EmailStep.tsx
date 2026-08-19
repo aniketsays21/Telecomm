@@ -28,7 +28,11 @@ export function EmailStep({ inboundEmail, onDone }: Props) {
   const [confirmed, setConfirmed] = useState(false);
 
   // If server returned success, show forwarding instructions
-  if (state && 'success' in state) {
+  if (state && 'success' in state && state.inboundEmail) {
+    // Capture the narrowed value into a local const — inside the closures
+    // below TypeScript drops the narrowing on `state.inboundEmail` and
+    // widens it back to `string | undefined`.
+    const connectedInbound: string = state.inboundEmail;
     return (
       <div className="p-8">
         <div className="flex items-start gap-4 mb-6">
@@ -45,10 +49,10 @@ export function EmailStep({ inboundEmail, onDone }: Props) {
           <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-2">Your Telecomm inbound address</p>
           <div className="flex items-center gap-2">
             <code className="text-sm font-mono text-indigo-900 bg-white px-3 py-1.5 rounded-lg border border-indigo-100 flex-1">
-              {state.inboundEmail}
+              {connectedInbound}
             </code>
             <button
-              onClick={() => navigator.clipboard.writeText(state.inboundEmail)}
+              onClick={() => navigator.clipboard.writeText(connectedInbound)}
               className="px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
             >
               Copy
@@ -84,7 +88,7 @@ export function EmailStep({ inboundEmail, onDone }: Props) {
           </label>
           <button
             disabled={!confirmed}
-            onClick={() => onDone(state.inboundEmail)}
+            onClick={() => onDone(connectedInbound)}
             className="ml-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
           >
             Continue →

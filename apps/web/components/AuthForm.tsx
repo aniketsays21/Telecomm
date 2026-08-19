@@ -28,9 +28,9 @@ export function AuthForm({ action, submitLabel, children }: Props) {
   return (
     <form action={formAction} className="space-y-4">
       {children}
-      {state && 'error' in state && (
+      {state && 'error' in state ? (
         <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{state.error}</p>
-      )}
+      ) : null}
       <SubmitButton label={submitLabel} />
     </form>
   );

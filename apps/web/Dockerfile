@@ -11,7 +11,11 @@ COPY packages/shared/package.json ./packages/shared/
 RUN pnpm install --frozen-lockfile --filter @telecomm/web...
 
 # Build
+# tsconfig.base.json is required at /app because apps/web/tsconfig.json
+# extends "../../tsconfig.base.json" — Next.js reads that during `next build`
+# and errors with TS5083 when the file is missing.
 FROM deps AS builder
+COPY tsconfig.base.json ./
 COPY packages/ ./packages/
 COPY apps/web/ ./apps/web/
 ARG NEXT_PUBLIC_API_URL=http://localhost:4000
