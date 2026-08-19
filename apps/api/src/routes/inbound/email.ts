@@ -26,7 +26,10 @@ export async function inboundEmailRoutes(app: FastifyInstance) {
       const text: string = (raw.TextBody ?? raw.text ?? raw.body ?? '').trim();
       const html: string | undefined = raw.HtmlBody ?? raw.html ?? undefined;
       const messageId: string | undefined = raw.MessageID ?? raw.messageId ?? raw['Message-ID'] ?? undefined;
-      const inReplyTo: string | undefined = raw.InReplyTo ?? raw.inReplyTo ?? raw['In-Reply-To'] ?? undefined;
+      // Postmark puts In-Reply-To inside a Headers array; other providers use top-level fields
+      const headersArr: Array<{ Name: string; Value: string }> = Array.isArray(raw.Headers) ? raw.Headers : [];
+      const headerInReplyTo = headersArr.find(h => h.Name === 'In-Reply-To')?.Value;
+      const inReplyTo: string | undefined = raw.InReplyTo ?? raw.inReplyTo ?? raw['In-Reply-To'] ?? headerInReplyTo ?? undefined;
 
       if (!from) return reply.code(400).send({ error: 'Missing from address' });
       if (!text && !html) return reply.code(400).send({ error: 'Missing email body' });
