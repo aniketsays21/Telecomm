@@ -167,7 +167,12 @@ export const api = {
 
   // Gmail
   gmailStatus: (token: string) =>
-    request<{ connected: boolean; account: GmailAccount | null; redirectUri: string }>('/gmail/status', {}, token),
+    request<{
+      connected: boolean;
+      account: GmailAccount | null;
+      redirectUri: string;
+      redirectUriMisconfigured: boolean;
+    }>('/gmail/status', {}, token),
 
   gmailStartOAuth: (token: string) =>
     request<{ url: string }>('/gmail/oauth/start', {}, token),

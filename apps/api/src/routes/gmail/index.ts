@@ -4,7 +4,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@telecomm/db';
 import { gmailAccounts, gmailRoutingRules, users } from '@telecomm/db/schema';
 import { requireAdmin, requireAuth } from '../../middleware/auth.js';
-import { buildAuthUrl, exchangeCode, signState, verifyState, GMAIL_SCOPE, redirectUri } from '../../lib/gmail-oauth.js';
+import { buildAuthUrl, exchangeCode, signState, verifyState, GMAIL_SCOPE, redirectUri, redirectUriMisconfigured } from '../../lib/gmail-oauth.js';
 import { encrypt } from '../../lib/gmail-crypto.js';
 import { getProfile } from '../../lib/gmail-client.js';
 import { webUrl } from '../../lib/urls.js';
@@ -38,7 +38,12 @@ export const gmailRoutes: FastifyPluginAsync = async (app) => {
     // Return the redirect URI too, so the UI can show admins the exact URL
     // to register in Google Cloud Console — the #1 cause of failed connects
     // is a mismatched or missing redirect URI.
-    return { connected: !!account, account: account ?? null, redirectUri: redirectUri() };
+    return {
+      connected: !!account,
+      account: account ?? null,
+      redirectUri: redirectUri(),
+      redirectUriMisconfigured: redirectUriMisconfigured(),
+    };
   });
 
   // ---- OAuth start --------------------------------------------------------

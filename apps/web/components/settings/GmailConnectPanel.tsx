@@ -5,7 +5,12 @@ import type { GmailAccount } from '@/lib/api';
 import { gmailStartOAuthAction, gmailDisconnectAction } from '@/lib/actions';
 
 type Props = {
-  initial: { connected: boolean; account: GmailAccount | null; redirectUri: string };
+  initial: {
+    connected: boolean;
+    account: GmailAccount | null;
+    redirectUri: string;
+    redirectUriMisconfigured: boolean;
+  };
 };
 
 function CopyableUri({ uri }: { uri: string }) {
@@ -71,7 +76,12 @@ export function GmailConnectPanel({ initial }: Props) {
     startTransition(async () => {
       const res = await gmailDisconnectAction();
       if ('error' in res && res.error) setError(res.error);
-      else setState((s) => ({ connected: false, account: null, redirectUri: s.redirectUri }));
+      else setState((s) => ({
+        connected: false,
+        account: null,
+        redirectUri: s.redirectUri,
+        redirectUriMisconfigured: s.redirectUriMisconfigured,
+      }));
     });
   }
 
@@ -112,18 +122,44 @@ export function GmailConnectPanel({ initial }: Props) {
           ) : (
             <button
               onClick={connect}
-              disabled={isPending}
-              className="text-sm px-4 py-2 bg-indigo-600 text-white rounded font-medium hover:bg-indigo-700 disabled:opacity-60"
+              disabled={isPending || state.redirectUriMisconfigured}
+              className="text-sm px-4 py-2 bg-indigo-600 text-white rounded font-medium hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed"
+              title={state.redirectUriMisconfigured ? 'Set GOOGLE_REDIRECT_URI on the API service first' : undefined}
             >
               {isPending ? 'Opening Google…' : 'Connect Gmail'}
             </button>
           )}
         </div>
       </div>
+
+      {/* Misconfiguration banner — surfaces the fix BEFORE the user clicks
+          Connect, and points at the exact env var to set on the API service. */}
+      {state.redirectUriMisconfigured && !state.connected && (
+        <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-4">
+          <p className="text-sm font-semibold text-rose-800">
+            Gmail can&apos;t be connected until the API knows its public URL.
+          </p>
+          <p className="text-xs text-rose-700 mt-1 leading-relaxed">
+            The API service is resolving its OAuth redirect URI to{' '}
+            <code className="font-mono">{state.redirectUri}</code>, which Google
+            will reject with <code className="font-mono">redirect_uri_mismatch</code>.
+            On Railway → your API service → Variables, add:
+          </p>
+          <pre className="mt-2 text-[11px] font-mono bg-white border border-rose-200 rounded p-2 overflow-x-auto text-rose-900">
+GOOGLE_REDIRECT_URI=https://&lt;your-api-domain&gt;/gmail/oauth/callback
+          </pre>
+          <p className="text-[11px] text-rose-600 mt-2">
+            The value must match — byte for byte — the Authorized redirect URI
+            you registered in Google Cloud Console. Redeploy the API after
+            setting it.
+          </p>
+        </div>
+      )}
+
       {error && (
         <p className="mt-3 text-xs text-rose-600">{error}</p>
       )}
-      {!state.connected && <CopyableUri uri={state.redirectUri} />}
+      {!state.connected && !state.redirectUriMisconfigured && <CopyableUri uri={state.redirectUri} />}
     </div>
   );
 }

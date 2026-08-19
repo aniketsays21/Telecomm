@@ -53,17 +53,39 @@ function clientSecret(): string { return requireEnv('GOOGLE_CLIENT_SECRET'); }
 export function redirectUri(): string {
   const explicit = process.env.GOOGLE_REDIRECT_URI?.trim();
   if (explicit) return explicit;
-  const derived = `${publicApiUrl()}/gmail/oauth/callback`;
-  if (derived.startsWith('http://localhost') && process.env.NODE_ENV === 'production') {
+  return `${publicApiUrl()}/gmail/oauth/callback`;
+}
+
+/**
+ * True when the current runtime cannot produce a redirect URI Google will
+ * accept — we're in production and the resolved URI is still localhost
+ * (i.e. no GOOGLE_REDIRECT_URI / PUBLIC_API_URL / API_URL / RAILWAY_PUBLIC_DOMAIN
+ * has been set on this API service). The Settings UI reads this flag so it
+ * can render an inline warning without the copy-URL box going blank.
+ */
+export function redirectUriMisconfigured(): boolean {
+  return redirectUri().startsWith('http://localhost') && process.env.NODE_ENV === 'production';
+}
+
+/**
+ * Same as redirectUri(), but throws if the current runtime would send Google
+ * a URL it will reject. Call ONLY at the moment we actually build the OAuth
+ * request (i.e. inside /gmail/oauth/start). Read-side endpoints like
+ * /gmail/status should call redirectUri() so the UI can display what's
+ * currently resolved even when it's wrong.
+ */
+export function requireValidRedirectUri(): string {
+  const uri = redirectUri();
+  if (uri.startsWith('http://localhost') && process.env.NODE_ENV === 'production') {
     throw new Error(
-      'Gmail OAuth would redirect to ' + derived + ' but this is a production ' +
+      'Gmail OAuth would redirect to ' + uri + ' but this is a production ' +
       'process. Google Cloud will reject this with redirect_uri_mismatch. Set ' +
       'GOOGLE_REDIRECT_URI on the API service to the exact URL you registered ' +
       'in Google Cloud Console → OAuth Client → Authorized redirect URIs ' +
       '(typically https://<your-api-domain>/gmail/oauth/callback).',
     );
   }
-  return derived;
+  return uri;
 }
 
 // ---- OAuth state (round-trips through Google's redirect) --------------------
@@ -90,7 +112,7 @@ export async function verifyState(token: string): Promise<OAuthState> {
 export function buildAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: clientId(),
-    redirect_uri: redirectUri(),
+    redirect_uri: requireValidRedirectUri(),
     response_type: 'code',
     scope: GMAIL_SCOPE,
     access_type: 'offline',
