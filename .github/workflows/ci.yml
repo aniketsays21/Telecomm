@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Fail fast — cancel in-progress runs on the same branch/PR so PR pushes
+# don't stack up in the queue.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck every workspace
+        # Turbo runs the `typecheck` script defined by each package that
+        # has one. If a package is missing the script Turbo just skips it.
+        run: pnpm turbo run typecheck --concurrency=4
+
+      - name: Run tests
+        run: pnpm turbo run test --concurrency=2

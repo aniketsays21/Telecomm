@@ -1,0 +1,315 @@
+export const CSS = `
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+
+  #tc-launcher {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--tc-color, #4f46e5);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 18px var(--tc-shadow, rgba(79,70,229,0.45));
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    z-index: 2147483647;
+  }
+  #tc-launcher:hover { transform: scale(1.07); box-shadow: 0 6px 22px var(--tc-shadow-lg, rgba(79,70,229,0.55)); }
+
+  /* Unread badge — sits on the top-right of the launcher when the widget is
+     closed and there are unread agent messages. */
+  #tc-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: 10px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 20px;
+    text-align: center;
+    box-shadow: 0 0 0 2px #fff;
+    pointer-events: none;
+    animation: tc-badge-pop 0.25s ease-out;
+  }
+  @keyframes tc-badge-pop {
+    from { transform: scale(0.4); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
+  #tc-window {
+    position: fixed;
+    bottom: 92px;
+    right: 24px;
+    width: 360px;
+    max-height: 540px;
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 8px 48px rgba(0,0,0,0.16);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 2147483646;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+  #tc-window.tc-hidden { opacity: 0; pointer-events: none; transform: translateY(10px); }
+
+  #tc-header {
+    background: var(--tc-gradient, linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%));
+    color: #fff;
+    padding: 16px 18px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  #tc-header h2 { font-size: 15px; font-weight: 700; line-height: 1.3; display: flex; align-items: center; gap: 8px; }
+  #tc-header p { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+  /* "<agent> is talking" presence line — sits in the header subtitle, so it
+     never covers the customer's messages. A pulsing green dot signals a live
+     human is on the thread. */
+  #tc-header p.tc-agent-live {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 1;
+    font-weight: 600;
+  }
+  .tc-agent-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+    background: #4ade80;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7);
+    animation: tc-pulse 1.6s ease-out infinite;
+  }
+  @keyframes tc-pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6); }
+    70%  { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+  }
+  .tc-msg-author {
+    font-size: 10.5px;
+    color: #4b5563;
+    padding: 0 2px 2px;
+    font-weight: 600;
+  }
+  .tc-close {
+    background: rgba(255,255,255,0.15);
+    border: none;
+    color: #fff;
+    cursor: pointer;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 16px;
+    transition: background 0.12s;
+  }
+  .tc-close:hover { background: rgba(255,255,255,0.25); }
+
+  #tc-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 14px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 180px;
+    scroll-behavior: smooth;
+  }
+  #tc-messages::-webkit-scrollbar { width: 4px; }
+  #tc-messages::-webkit-scrollbar-track { background: transparent; }
+  #tc-messages::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 2px; }
+
+  .tc-msg { max-width: 84%; display: flex; flex-direction: column; gap: 3px; }
+  .tc-msg.tc-user { align-self: flex-end; }
+  .tc-msg.tc-bot { align-self: flex-start; }
+  .tc-msg.tc-agent { align-self: flex-start; }
+  .tc-msg.tc-agent .tc-bubble {
+    background: #eef7f2;
+    color: #14261e;
+    border: 1px solid #d8ebe1;
+    border-radius: 14px 14px 14px 4px;
+  }
+
+  .tc-bubble {
+    padding: 10px 13px;
+    font-size: 13.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .tc-user .tc-bubble {
+    background: var(--tc-color, #4f46e5);
+    color: #fff;
+    border-radius: 14px 14px 4px 14px;
+  }
+  .tc-bot .tc-bubble {
+    background: #f3f4f6;
+    color: #1f2937;
+    border-radius: 14px 14px 14px 4px;
+  }
+  .tc-bot .tc-bubble.tc-err {
+    background: #fef2f2;
+    color: #dc2626;
+    border: 1px solid #fee2e2;
+  }
+
+  /* Inline links inside a bot bubble — clearly clickable, opens in new tab. */
+  .tc-link {
+    color: var(--tc-color, #4f46e5);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font-weight: 500;
+  }
+  .tc-link:hover { opacity: 0.85; }
+
+  /* Source-article chips shown under a bot message when the AI cited KB
+     articles. Deliberately smaller than the bubble so they read as "related",
+     not part of the reply itself. */
+  .tc-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .tc-source-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    padding: 5px 9px;
+    font-size: 11.5px;
+    line-height: 1.2;
+    text-decoration: none;
+    color: #374151;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    transition: border-color 120ms ease, color 120ms ease;
+  }
+  .tc-source-chip:hover {
+    border-color: var(--tc-color, #4f46e5);
+    color: var(--tc-color, #4f46e5);
+  }
+  .tc-source-icon {
+    font-size: 10px;
+    color: var(--tc-color, #4f46e5);
+    line-height: 1;
+  }
+  .tc-source-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 220px;
+  }
+
+  .tc-time {
+    font-size: 10.5px;
+    color: #9ca3af;
+    padding: 0 2px;
+  }
+  .tc-user .tc-time { text-align: right; }
+
+  .tc-typing {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    padding: 12px 14px;
+  }
+  .tc-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #9ca3af;
+    animation: tc-bounce 1.2s infinite ease-in-out;
+  }
+  .tc-dot:nth-child(2) { animation-delay: 0.2s; }
+  .tc-dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes tc-bounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-5px); }
+  }
+
+  #tc-escalated {
+    background: #fffbeb;
+    border-top: 1px solid #fef3c7;
+    color: #92400e;
+    font-size: 12px;
+    padding: 8px 14px;
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  #tc-input-area {
+    padding: 10px 12px;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    background: #fff;
+  }
+  #tc-input-area textarea {
+    flex: 1;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 13.5px;
+    font-family: inherit;
+    resize: none;
+    min-height: 38px;
+    max-height: 100px;
+    line-height: 1.45;
+    outline: none;
+    color: #111827;
+    background: #f9fafb;
+    transition: border-color 0.15s;
+  }
+  #tc-input-area textarea:focus { border-color: var(--tc-color, #4f46e5); background: #fff; }
+  #tc-input-area textarea::placeholder { color: #9ca3af; }
+  #tc-input-area textarea:disabled { opacity: 0.5; }
+
+  #tc-send {
+    background: var(--tc-color, #4f46e5);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    width: 38px;
+    height: 38px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: filter 0.15s;
+  }
+  #tc-send:hover { filter: brightness(0.88); }
+  #tc-send:disabled { background: var(--tc-highlight, #c7d2fe); cursor: not-allowed; filter: none; }
+
+  #tc-footer {
+    font-size: 10px;
+    color: #d1d5db;
+    text-align: center;
+    padding: 6px 12px 10px;
+    background: #fff;
+  }
+
+  @media (max-width: 400px) {
+    #tc-window { width: calc(100vw - 16px); right: 8px; bottom: 76px; }
+    #tc-launcher { right: 12px; bottom: 12px; }
+  }
+`;

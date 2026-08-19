@@ -1,0 +1,142 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────
+   Quiet Editorial — design tokens.
+   Bone-paper background, ink typography, one deep-forest accent
+   that intentionally replaces the generic indigo everywhere.
+   All UI color decisions read from these vars, so the whole app
+   can be re-tuned by editing this file.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  /* Neutrals — Zendesk / Intercom / Front-style clean surfaces. High
+     contrast for readability; nothing "warmed" that reads as beige. */
+  --bone:   #F7F8FA;      /* app background — cool light gray            */
+  --paper:  #FFFFFF;      /* cards, panels, message bubbles              */
+  --ink:    #0F172A;      /* primary text — slate-900                    */
+  --ash:    #475569;      /* muted text — slate-600                      */
+  --dust:   #94A3B8;      /* tertiary — slate-400                        */
+  --rule:   #E2E8F0;      /* hairline borders — slate-200                */
+  --rule-2: #F1F5F9;      /* softer divider — slate-100                  */
+
+  /* Primary — a confident indigo that reads as "modern SaaS", not toy. */
+  --forest:      #4F46E5; /* primary accent — indigo-600                 */
+  --forest-soft: #EEF2FF; /* accent surface — indigo-50                  */
+  --brick:       #DC2626; /* urgent / breached / danger — red-600        */
+  --brick-soft:  #FEE2E2;
+  --ochre:       #D97706; /* warning, snoozed — amber-600                */
+  --ochre-soft:  #FEF3C7;
+  --sky:         #0284C7; /* neutral info — sky-600                      */
+  --sky-soft:    #E0F2FE;
+
+  /* Typography shortcuts. Display now points at the same sans as body —
+     no italic serif anywhere. Headings get weight + tracking, not a
+     different font. */
+  --font-display: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-body:    var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-numeric: var(--font-mono), 'SF Mono', 'JetBrains Mono', monospace;
+}
+
+html, body { background: var(--bone); color: var(--ink); }
+body { font-family: var(--font-body); font-feature-settings: 'ss01', 'cv11'; }
+
+/* Selection matches the accent so it looks intentional, not browser-default. */
+::selection { background: var(--forest); color: var(--paper); }
+
+/* Custom scrollbar — narrow, quiet, on-brand. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border-radius: 999px;
+  border: 2px solid var(--bone);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--dust); }
+
+/* ─────────────────────────────────────────────────────────────
+   Utility classes — used by many components so kept central.
+   ───────────────────────────────────────────────────────────── */
+
+/* Display headings: heavy sans, tighter tracking. Never italic. */
+.font-display  { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.02em; font-style: normal !important; }
+.font-numeric  { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; }
+
+/* Neutralize any lingering italic modifier from the older serif theme. */
+.font-display.italic, .font-display[style*="italic"] { font-style: normal !important; }
+
+/* Uppercase micro-labels ("CONTACT", "CONVERSATION") — an editorial staple. */
+.eyebrow {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ash);
+}
+
+/* Text-based status "chips" — no pills, no colors. Just a leading dot and
+   the word. Reads as prose but signals state. */
+.status-dot::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: currentColor;
+}
+
+/* Text link with a slow underline reveal — no accent-colored link soup. */
+.link-underline {
+  color: var(--ink);
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  transition: color 0.15s;
+}
+.link-underline:hover { color: var(--forest); }
+
+/* Primary button — ink block, paper text. Confident, not shouty. */
+.btn-ink {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+.btn-ink:hover:not(:disabled) { background: #000; }
+.btn-ink:active:not(:disabled) { transform: translateY(1px); }
+.btn-ink:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Ghost / secondary button — hairline border on paper. */
+.btn-ghost {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  padding: 7px 13px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.btn-ghost:hover:not(:disabled) { background: var(--forest-soft); border-color: var(--forest); color: var(--forest); }
+.btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Input — flat, no radius smoothing, one hairline. */
+.input-flat {
+  width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+  transition: border-color 0.15s;
+}
+.input-flat::placeholder { color: var(--dust); }
+.input-flat:focus { outline: none; border-color: var(--ink); }

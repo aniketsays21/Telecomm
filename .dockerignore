@@ -1,0 +1,39 @@
+# Never copy host-side node_modules into the image — they hold symlinks that
+# point outside the build context and would silently shadow the pnpm install
+# we do inside Docker.
+node_modules
+**/node_modules
+
+# Build artifacts belong to the local machine, not the image.
+dist
+**/dist
+.next
+**/.next
+build
+**/build
+out
+**/out
+
+# Secrets and local overrides must never land in an image layer.
+.env
+.env.*
+!.env.example
+
+# Version control and CI metadata are noise inside the image.
+.git
+.gitignore
+.github
+
+# OS/editor debris.
+.DS_Store
+.vscode
+.idea
+
+# Test coverage output.
+coverage
+**/coverage
+
+# Package manager caches that would balloon the context.
+.pnpm-store
+.turbo
+**/.turbo

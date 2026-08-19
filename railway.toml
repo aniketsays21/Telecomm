@@ -1,0 +1,5 @@
+# Root-level railway.toml
+# Railway reads per-service configs from apps/api/railway.toml and apps/web/railway.toml
+# when you create two services in the Railway dashboard pointing to this repo.
+[build]
+builder = "nixpacks"
