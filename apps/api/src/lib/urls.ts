@@ -21,9 +21,12 @@ function stripTrailingSlash(url: string): string {
 }
 
 function railwayPublicUrl(): string | undefined {
-  const domain = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
-  if (!domain) return undefined;
-  return `https://${domain}`;
+  const raw = process.env.RAILWAY_PUBLIC_DOMAIN?.trim();
+  if (!raw) return undefined;
+  // Belt-and-braces: Railway ships bare host (`foo.up.railway.app`), but a
+  // user could paste a full URL by mistake — don't produce `https://https://…`.
+  if (/^https?:\/\//i.test(raw)) return stripTrailingSlash(raw);
+  return `https://${raw}`;
 }
 
 /** URL the widget snippet embeds; where `widget.js` and the widget API live. */

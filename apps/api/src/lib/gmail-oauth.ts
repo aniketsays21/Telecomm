@@ -30,14 +30,40 @@ function clientId(): string { return requireEnv('GOOGLE_CLIENT_ID'); }
 function clientSecret(): string { return requireEnv('GOOGLE_CLIENT_SECRET'); }
 
 /**
- * The Google-registered redirect_uri. Must match what's on file in the Google
- * Cloud Console OAuth Client. Explicit env var wins over the auto-inferred
- * Railway URL so cross-environment deploys can point at the right one.
+ * The Google-registered redirect_uri. MUST match — byte for byte — what is
+ * registered in Google Cloud Console → APIs & Services → Credentials → OAuth
+ * Client → Authorized redirect URIs.
+ *
+ * Resolution order:
+ *   1. GOOGLE_REDIRECT_URI  ← ONLY env var whose sole purpose is this. Set
+ *      this in production to the exact value registered in Google Cloud.
+ *      Recommended because the string must match Google's registered URI
+ *      exactly, so any coupling to the general API URL is a foot-gun.
+ *   2. publicApiUrl() + '/gmail/oauth/callback' — inferred from PUBLIC_API_URL /
+ *      API_URL / RAILWAY_PUBLIC_DOMAIN. Convenient for local dev; risky in
+ *      production because Google needs the EXACT string.
+ *
+ * Failure mode we guard against: in production this function used to
+ * silently return `http://localhost:4000/gmail/oauth/callback` if none of
+ * the URL env vars were set, causing Google to reject the OAuth flow with
+ * `redirect_uri_mismatch`. We now throw a clear, actionable error instead
+ * so the misconfiguration surfaces at OAuth-start time, not on Google's
+ * side.
  */
 export function redirectUri(): string {
   const explicit = process.env.GOOGLE_REDIRECT_URI?.trim();
   if (explicit) return explicit;
-  return `${publicApiUrl()}/gmail/oauth/callback`;
+  const derived = `${publicApiUrl()}/gmail/oauth/callback`;
+  if (derived.startsWith('http://localhost') && process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'Gmail OAuth would redirect to ' + derived + ' but this is a production ' +
+      'process. Google Cloud will reject this with redirect_uri_mismatch. Set ' +
+      'GOOGLE_REDIRECT_URI on the API service to the exact URL you registered ' +
+      'in Google Cloud Console → OAuth Client → Authorized redirect URIs ' +
+      '(typically https://<your-api-domain>/gmail/oauth/callback).',
+    );
+  }
+  return derived;
 }
 
 // ---- OAuth state (round-trips through Google's redirect) --------------------

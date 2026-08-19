@@ -79,5 +79,19 @@ const app = await build();
 // Start background workers (ingest + embed)
 startWorkers();
 
+// Surface OAuth misconfiguration at boot instead of the first Connect click.
+try {
+  const { redirectUri } = await import('./lib/gmail-oauth.js');
+  const uri = redirectUri();
+  if (uri.startsWith('http://localhost') && process.env.NODE_ENV === 'production') {
+    console.warn('[gmail] REDIRECT URI resolves to localhost in production — Google will reject.');
+    console.warn('[gmail] Set GOOGLE_REDIRECT_URI to the URL registered in Google Cloud Console.');
+  } else {
+    console.log(`[gmail] OAuth redirect URI: ${uri}`);
+  }
+} catch (err) {
+  console.warn('[gmail] redirect URI resolution failed at boot:', err instanceof Error ? err.message : err);
+}
+
 await app.listen({ port: PORT, host: '0.0.0.0' });
 console.log(`API listening on http://localhost:${PORT}`);
