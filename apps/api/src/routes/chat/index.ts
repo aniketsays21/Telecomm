@@ -9,6 +9,7 @@ import { Queue } from 'bullmq';
 import { QUEUES } from '@telecomm/shared';
 import { broadcastToWorkspace } from '../ws/index.js';
 import { redisConnection } from '../../lib/redis.js';
+import { pickBestAgent } from '../../lib/assign.js';
 
 const ingestQueue = new Queue(QUEUES.INGEST, { connection: redisConnection() });
 
@@ -146,6 +147,20 @@ export async function chatRoutes(app: FastifyInstance) {
         nextConvoUpdate.aiHandled = false;
         nextConvoUpdate.escalatedAt = new Date();
         nextConvoUpdate.escalationReason = aiAnswer.escalationReason;
+        // Auto-assign to the best available agent so escalations don't sit in
+        // limbo. Falls back to unassigned (null) if nobody qualifies — any
+        // agent can still pick it up manually.
+        if (!conversation.assigneeId) {
+          try {
+            const agentId = await pickBestAgent(workspaceId);
+            if (agentId) {
+              nextConvoUpdate.assigneeId = agentId;
+              nextConvoUpdate.assignedAt = new Date();
+            }
+          } catch (assignErr) {
+            request.log.warn({ err: assignErr, conversationId: conversation.id }, 'Auto-assign failed');
+          }
+        }
       }
       await db.update(conversations).set(nextConvoUpdate)
         .where(eq(conversations.id, conversation.id));

@@ -50,17 +50,23 @@ export const api = {
     request<AuthResponse>('/auth/accept-invite', { method: 'POST', body: JSON.stringify(body) }),
 
   me: (token: string) =>
-    request<{ id: string; name: string; email: string; role: string; status: string }>(
+    request<{ id: string; name: string; email: string; role: string; status: string; availability: AgentAvailability | null; maxConcurrentChats: string | null }>(
       '/users/me', {}, token
     ),
 
   listUsers: (token: string) =>
-    request<Array<{ id: string; name: string; email: string; role: string }>>('/users', {}, token),
+    request<TeamMember[]>('/users', {}, token),
 
   inviteUser: (token: string, body: { email: string; name: string; role: string }) =>
     request<{ id: string; email: string; inviteLink: string }>(
       '/users/invite', { method: 'POST', body: JSON.stringify(body) }, token
     ),
+
+  updateMe: (token: string, patch: Partial<{ name: string; status: 'online' | 'away' | 'offline'; availability: AgentAvailability }>) =>
+    request<{ ok: boolean }>('/users/me', { method: 'PATCH', body: JSON.stringify(patch) }, token),
+
+  updateUser: (token: string, id: string, patch: Partial<{ name: string; role: string; availability: AgentAvailability; maxConcurrentChats: number }>) =>
+    request<{ ok: boolean }>(`/users/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, token),
 
   // Onboarding
   getOnboarding: (token: string) =>
@@ -277,6 +283,23 @@ export type WorkspaceData = {
   slug: string;
   settings: WorkspaceSettings;
   inboundEmail: string | null;
+};
+
+export type AgentAvailability = {
+  timezone: string;
+  schedule: Array<{ day: 0 | 1 | 2 | 3 | 4 | 5 | 6; open: string; close: string }>;
+};
+
+export type TeamMember = {
+  id: string;
+  name: string;
+  email: string;
+  role: 'admin' | 'agent' | 'readonly';
+  status: 'online' | 'away' | 'offline';
+  availability: AgentAvailability | null;
+  maxConcurrentChats: string | null;
+  inviteAcceptedAt: string | null;
+  createdAt: string;
 };
 
 export type CannedResponse = {

@@ -24,6 +24,7 @@ import {
   buildReferences,
 } from '../../lib/inbound-email.js';
 import { broadcastToWorkspace } from '../ws/index.js';
+import { pickBestAgent } from '../../lib/assign.js';
 
 /** Postgres unique-violation. Raised when two webhook retries race each other. */
 const UNIQUE_VIOLATION = '23505';
@@ -301,6 +302,17 @@ export async function inboundEmailRoutes(app: FastifyInstance) {
         convoUpdate.aiHandled = false;
         convoUpdate.escalatedAt = new Date();
         convoUpdate.escalationReason = aiAnswer.escalationReason;
+        if (!conversation.assigneeId) {
+          try {
+            const agentId = await pickBestAgent(workspaceId);
+            if (agentId) {
+              convoUpdate.assigneeId = agentId;
+              convoUpdate.assignedAt = new Date();
+            }
+          } catch (assignErr) {
+            app.log.warn({ err: assignErr, conversationId: conversation.id }, 'Auto-assign failed');
+          }
+        }
       }
       if (Object.keys(convoUpdate).length) {
         await db.update(conversations).set(convoUpdate as any).where(eq(conversations.id, conversation.id));

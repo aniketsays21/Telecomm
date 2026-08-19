@@ -294,6 +294,49 @@ export async function cannedDeleteAction(id: string) {
   revalidatePath('/settings/canned');
 }
 
+export async function updateMyAvailabilityAction(availability: {
+  timezone: string;
+  schedule: Array<{ day: 0 | 1 | 2 | 3 | 4 | 5 | 6; open: string; close: string }>;
+}) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    await api.updateMe(session.token, { availability });
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/team');
+    revalidatePath('/onboarding');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
+export async function updateTeamMemberAction(
+  id: string,
+  patch: Partial<{
+    name: string;
+    role: string;
+    maxConcurrentChats: number;
+    availability: {
+      timezone: string;
+      schedule: Array<{ day: 0 | 1 | 2 | 3 | 4 | 5 | 6; open: string; close: string }>;
+    };
+  }>,
+) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    await api.updateUser(session.token, id, patch);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/team');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
 export async function inviteUserAction(_prev: unknown, formData: FormData) {
   const { getSession } = await import('./session');
   const session = await getSession();

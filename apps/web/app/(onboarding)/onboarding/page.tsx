@@ -8,7 +8,10 @@ export default async function OnboardingPage() {
   if (!session) redirect('/login');
   if (session.role !== 'admin') redirect('/inbox');
 
-  const data = await api.getOnboarding(session.token).catch(() => null);
+  const [data, me] = await Promise.all([
+    api.getOnboarding(session.token).catch(() => null),
+    api.me(session.token).catch(() => null),
+  ]);
   if (!data) redirect('/inbox');
 
   // If already live, send to inbox
@@ -28,6 +31,7 @@ export default async function OnboardingPage() {
       <OnboardingWizard
         initialData={data}
         workspaceName={session.name}
+        initialAvailability={me?.availability ?? null}
       />
     </div>
   );

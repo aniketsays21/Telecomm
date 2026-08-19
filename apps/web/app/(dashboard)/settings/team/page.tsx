@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { api } from '@/lib/api';
 import { InviteForm } from '@/components/InviteForm';
+import { TeamMemberRow } from '@/components/settings/TeamMemberRow';
 
 export default async function TeamPage() {
   const session = await getSession();
@@ -12,33 +13,15 @@ export default async function TeamPage() {
   return (
     <div className="p-8 max-w-3xl">
       <h1 className="text-2xl font-bold text-gray-900 mb-1">Team</h1>
-      <p className="text-gray-500 mb-8">Manage agents and their access.</p>
+      <p className="text-gray-500 mb-8">Set working hours and capacity so escalations route to whoever is free.</p>
 
-      <div className="bg-white rounded-xl border border-gray-200 mb-8">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-100">
-              <th className="text-left px-5 py-3 font-medium text-gray-500">Name</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-500">Email</th>
-              <th className="text-left px-5 py-3 font-medium text-gray-500">Role</th>
-            </tr>
-          </thead>
-          <tbody>
-            {members.map((m) => (
-              <tr key={m.id} className="border-b border-gray-50 last:border-0">
-                <td className="px-5 py-3 font-medium text-gray-900">{m.name}</td>
-                <td className="px-5 py-3 text-gray-600">{m.email}</td>
-                <td className="px-5 py-3">
-                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                    m.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {m.role}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="bg-white rounded-xl border border-gray-200 mb-8 divide-y divide-gray-100">
+        {members.map((m) => (
+          <TeamMemberRow key={m.id} member={m} />
+        ))}
+        {members.length === 0 && (
+          <p className="p-6 text-sm text-gray-400">No members yet.</p>
+        )}
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6">

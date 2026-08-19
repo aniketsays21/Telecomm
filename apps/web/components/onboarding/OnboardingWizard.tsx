@@ -1,14 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import type { OnboardingData } from '@/lib/api';
+import type { OnboardingData, AgentAvailability } from '@/lib/api';
 import { EmailStep } from './EmailStep';
 import { SourcesStep } from './SourcesStep';
 import { WidgetStep } from './WidgetStep';
+import { HoursStep } from './HoursStep';
 
-type Step = 'email' | 'sources' | 'widget';
+type Step = 'hours' | 'email' | 'sources' | 'widget';
 
 const STEPS: { id: Step; label: string; description: string }[] = [
+  { id: 'hours', label: 'Your hours', description: 'When escalations should route to you' },
   { id: 'email', label: 'Connect email', description: 'Receive customer emails as tickets' },
   { id: 'sources', label: 'Add knowledge', description: 'Help docs, website, or files for the AI' },
   { id: 'widget', label: 'Install widget', description: 'Paste one script tag on your site' },
@@ -17,10 +19,12 @@ const STEPS: { id: Step; label: string; description: string }[] = [
 type Props = {
   initialData: OnboardingData;
   workspaceName: string;
+  initialAvailability: AgentAvailability | null;
 };
 
-export function OnboardingWizard({ initialData, workspaceName }: Props) {
+export function OnboardingWizard({ initialData, workspaceName, initialAvailability }: Props) {
   const firstIncomplete = (): Step => {
+    if (!initialAvailability || (initialAvailability.schedule ?? []).length === 0) return 'hours';
     if (!initialData.onboardingState.emailConnected) return 'email';
     if (!initialData.onboardingState.sourcesConnected) return 'sources';
     return 'widget';
@@ -29,6 +33,7 @@ export function OnboardingWizard({ initialData, workspaceName }: Props) {
   const [currentStep, setCurrentStep] = useState<Step>(firstIncomplete);
   const [completedSteps, setCompletedSteps] = useState<Set<Step>>(() => {
     const s = new Set<Step>();
+    if (initialAvailability && (initialAvailability.schedule ?? []).length > 0) s.add('hours');
     if (initialData.onboardingState.emailConnected) s.add('email');
     if (initialData.onboardingState.sourcesConnected) s.add('sources');
     if (initialData.onboardingState.widgetInstalled) s.add('widget');
@@ -43,11 +48,10 @@ export function OnboardingWizard({ initialData, workspaceName }: Props) {
 
   function advance(from: Step) {
     markDone(from);
-    if (from === 'email') setCurrentStep('sources');
+    if (from === 'hours') setCurrentStep('email');
+    else if (from === 'email') setCurrentStep('sources');
     else if (from === 'sources') setCurrentStep('widget');
   }
-
-  const stepIndex = STEPS.findIndex(s => s.id === currentStep);
 
   return (
     <div>
@@ -83,6 +87,9 @@ export function OnboardingWizard({ initialData, workspaceName }: Props) {
 
       {/* Step card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        {currentStep === 'hours' && (
+          <HoursStep initial={initialAvailability} onDone={() => advance('hours')} />
+        )}
         {currentStep === 'email' && (
           <EmailStep
             inboundEmail={inboundEmail}

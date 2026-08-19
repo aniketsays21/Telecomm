@@ -13,6 +13,32 @@ const inviteBody = z.object({
   role: z.enum(['agent', 'readonly']).default('agent'),
 });
 
+const dayLiteral = z.union([
+  z.literal(0), z.literal(1), z.literal(2), z.literal(3),
+  z.literal(4), z.literal(5), z.literal(6),
+]);
+const availabilitySchema = z.object({
+  timezone: z.string().min(1),
+  schedule: z.array(z.object({
+    day: dayLiteral,
+    open: z.string().regex(/^\d{2}:\d{2}$/),
+    close: z.string().regex(/^\d{2}:\d{2}$/),
+  })),
+});
+
+const updateSelfBody = z.object({
+  name: z.string().min(2).optional(),
+  availability: availabilitySchema.optional(),
+  status: z.enum(['online', 'away', 'offline']).optional(),
+});
+
+const updateMemberBody = z.object({
+  name: z.string().min(2).optional(),
+  role: z.enum(['admin', 'agent', 'readonly']).optional(),
+  availability: availabilitySchema.optional(),
+  maxConcurrentChats: z.number().int().min(1).max(50).optional(),
+});
+
 export const usersRoutes: FastifyPluginAsync = async (app) => {
   // GET /users/me
   app.get('/users/me', async (request, reply) => {
@@ -20,9 +46,22 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
     if (!session) return;
     const [user] = await db.select({
       id: users.id, email: users.email, name: users.name, role: users.role, status: users.status,
+      availability: users.availability, maxConcurrentChats: users.maxConcurrentChats,
     }).from(users).where(eq(users.id, session.userId)).limit(1);
     if (!user) return reply.code(404).send({ error: 'Not found' });
     return user;
+  });
+
+  // PATCH /users/me — user updates their own name / availability / status
+  app.patch('/users/me', async (request, reply) => {
+    const session = requireAuth(request, reply);
+    if (!session) return;
+    const body = updateSelfBody.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const patch = body.data;
+    if (Object.keys(patch).length === 0) return reply.code(400).send({ error: 'No fields to update' });
+    await db.update(users).set({ ...patch, updatedAt: new Date() }).where(eq(users.id, session.userId));
+    return { ok: true };
   });
 
   // GET /users — list workspace members (admin only)
@@ -31,9 +70,25 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
     if (!session) return;
     const members = await db.select({
       id: users.id, email: users.email, name: users.name, role: users.role, status: users.status,
-      availability: users.availability, inviteAcceptedAt: users.inviteAcceptedAt, createdAt: users.createdAt,
+      availability: users.availability, maxConcurrentChats: users.maxConcurrentChats,
+      inviteAcceptedAt: users.inviteAcceptedAt, createdAt: users.createdAt,
     }).from(users).where(eq(users.workspaceId, session.workspaceId));
     return members;
+  });
+
+  // PATCH /users/:id — admin updates a teammate
+  app.patch('/users/:id', async (request, reply) => {
+    const session = requireAdmin(request, reply);
+    if (!session) return;
+    const { id } = request.params as { id: string };
+    const body = updateMemberBody.safeParse(request.body);
+    if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
+    const { maxConcurrentChats, ...rest } = body.data;
+    const patch: Record<string, unknown> = { ...rest, updatedAt: new Date() };
+    if (maxConcurrentChats != null) patch.maxConcurrentChats = String(maxConcurrentChats);
+    if (Object.keys(patch).length <= 1) return reply.code(400).send({ error: 'No fields to update' });
+    await db.update(users).set(patch).where(and(eq(users.id, id), eq(users.workspaceId, session.workspaceId)));
+    return { ok: true };
   });
 
   // POST /users/invite — admin invites a teammate
