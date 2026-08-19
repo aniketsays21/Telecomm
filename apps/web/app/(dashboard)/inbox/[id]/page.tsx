@@ -32,7 +32,7 @@ export default async function ConversationPage({ params, searchParams }: Props) 
     ? listResult.value
     : { conversations: [], hasMore: false };
 
-  const { conversation, contact, messages } = threadResult.value;
+  const { conversation, contact, messages, summary } = threadResult.value;
   const cannedResponses = cannedResult.status === 'fulfilled' ? cannedResult.value.responses : [];
   const agents = usersResult.status === 'fulfilled' ? usersResult.value : [];
 
@@ -65,7 +65,7 @@ export default async function ConversationPage({ params, searchParams }: Props) 
       </div>
 
       {/* Contact/conversation details sidebar */}
-      <ContactSidebar contact={contact} conversation={conversation} />
+      <ContactSidebar contact={contact} conversation={conversation} summary={summary} />
     </div>
   );
 }

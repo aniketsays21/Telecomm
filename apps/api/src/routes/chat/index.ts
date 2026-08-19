@@ -2,8 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db } from '@telecomm/db';
-import { workspaces, contacts, conversations, messages } from '@telecomm/db/schema';
-import { embedQuery, generateAnswer } from '@telecomm/ai';
+import { workspaces, contacts, conversations, messages, conversationSummaries } from '@telecomm/db/schema';
+import { embedQuery, generateAnswer, summarizeConversation } from '@telecomm/ai';
 import { searchChunks } from '../../lib/search.js';
 import { Queue } from 'bullmq';
 import { QUEUES } from '@telecomm/shared';
@@ -160,6 +160,43 @@ export async function chatRoutes(app: FastifyInstance) {
         aiSources: aiAnswer.sources,
       }).returning();
       broadcastToWorkspace(workspaceId, { type: 'message', conversationId: conversation.id, message: aiMsg });
+
+      // Refresh the conversation summary in the background so the agent
+      // panel always has an up-to-date TL;DR. Not awaited — the customer
+      // has already received their reply.
+      const historyForSummary = [
+        ...history,
+        { role: 'user' as const, content: message },
+        { role: 'assistant' as const, content: replyText },
+      ];
+      summarizeConversation(historyForSummary, ws.name)
+        .then((s) =>
+          db
+            .insert(conversationSummaries)
+            .values({
+              conversationId: conversation.id,
+              summary: s.summary,
+              whatCustomerWants: s.whatCustomerWants || null,
+              whatsBeenTried: s.whatsBeenTried || null,
+              currentStatus: s.currentStatus || null,
+              keyDetails: s.keyDetails,
+              upToMessageId: aiMsg.id,
+              updatedAt: new Date(),
+            })
+            .onConflictDoUpdate({
+              target: conversationSummaries.conversationId,
+              set: {
+                summary: s.summary,
+                whatCustomerWants: s.whatCustomerWants || null,
+                whatsBeenTried: s.whatsBeenTried || null,
+                currentStatus: s.currentStatus || null,
+                keyDetails: s.keyDetails,
+                upToMessageId: aiMsg.id,
+                updatedAt: new Date(),
+              },
+            }),
+        )
+        .catch((err) => request.log.error({ err, conversationId: conversation.id }, 'Summary generation failed'));
 
     } catch (err: any) {
       // AI unavailable — escalate gracefully

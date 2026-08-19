@@ -104,9 +104,12 @@ export const api = {
   },
 
   getConversation: (token: string, id: string) =>
-    request<{ conversation: Conversation; contact: Contact; messages: Message[] }>(
-      `/inbox/conversations/${id}`, {}, token
-    ),
+    request<{
+      conversation: Conversation;
+      contact: Contact;
+      messages: Message[];
+      summary: ConversationInsight | null;
+    }>(`/inbox/conversations/${id}`, {}, token),
 
   sendMessage: (token: string, conversationId: string, body: { body: string; isInternalNote?: boolean }) =>
     request<Message>(
@@ -227,6 +230,15 @@ export type Message = {
   aiConfidence: string | null;
   aiSources: unknown[];
   createdAt: string;
+};
+
+export type ConversationInsight = {
+  summary: string;
+  whatCustomerWants: string | null;
+  whatsBeenTried: string | null;
+  currentStatus: string | null;
+  keyDetails: string[] | null;
+  updatedAt: string;
 };
 
 export type AnalyticsData = {

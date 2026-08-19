@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { eq, and, desc, sql, or, ilike } from 'drizzle-orm';
 import { db } from '@telecomm/db';
-import { conversations, messages, contacts, users } from '@telecomm/db/schema';
+import { conversations, messages, contacts, users, conversationSummaries } from '@telecomm/db/schema';
 import { requireAuth } from '../../middleware/auth.js';
 import { broadcastToWorkspace } from '../ws/index.js';
 import {
@@ -222,7 +222,13 @@ export async function inboxRoutes(app: FastifyInstance) {
       ))
       .orderBy(messages.createdAt);
 
-    return { conversation: conv, contact, messages: thread };
+    const [summary] = await db
+      .select()
+      .from(conversationSummaries)
+      .where(eq(conversationSummaries.conversationId, id))
+      .limit(1);
+
+    return { conversation: conv, contact, messages: thread, summary: summary ?? null };
   });
 
   // POST /inbox/conversations/:id/messages — agent reply

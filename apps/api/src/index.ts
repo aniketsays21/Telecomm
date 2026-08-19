@@ -44,9 +44,12 @@ async function build() {
   app.get('/widget.js', async (_req, reply) => {
     try {
       const content = await readFile(WIDGET_PATH, 'utf8');
+      // Short TTL so a widget code change deployed to the API reaches
+      // customer sites in ~5 minutes, not an hour. The bundle itself is
+      // tiny (~25kB gzipped), so serving fresh is cheap.
       return reply
         .type('application/javascript')
-        .header('Cache-Control', 'public, max-age=3600')
+        .header('Cache-Control', 'public, max-age=300, must-revalidate')
         .send(content);
     } catch {
       return reply.code(404).send('// Widget not built. Run: pnpm --filter @telecomm/widget build');

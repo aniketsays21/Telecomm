@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useTransition, useRef } from 'react';
-import type { Contact, Conversation } from '@/lib/api';
+import type { Contact, Conversation, ConversationInsight } from '@/lib/api';
 import { updateConversationAction } from '@/lib/actions';
 
 interface Props {
   contact: Contact;
   conversation: Conversation;
+  summary?: ConversationInsight | null;
 }
 
 function relativeTime(iso: string) {
@@ -88,7 +89,7 @@ function TagsEditor({ conversation }: { conversation: Conversation }) {
   );
 }
 
-export function ContactSidebar({ contact, conversation }: Props) {
+export function ContactSidebar({ contact, conversation, summary }: Props) {
   const [open, setOpen] = useState(true);
 
   return (
@@ -108,6 +109,48 @@ export function ContactSidebar({ contact, conversation }: Props) {
 
       {open && (
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {/* AI summary */}
+          {summary && (
+            <>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">AI Summary</p>
+                <p className="text-sm text-gray-800 leading-snug">{summary.summary}</p>
+                <div className="mt-3 space-y-2">
+                  {summary.whatCustomerWants && (
+                    <div>
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">What they want</p>
+                      <p className="text-xs text-gray-700 mt-0.5 leading-snug">{summary.whatCustomerWants}</p>
+                    </div>
+                  )}
+                  {summary.whatsBeenTried && (
+                    <div>
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">What's been tried</p>
+                      <p className="text-xs text-gray-700 mt-0.5 leading-snug">{summary.whatsBeenTried}</p>
+                    </div>
+                  )}
+                  {summary.currentStatus && (
+                    <div>
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Current status</p>
+                      <p className="text-xs text-gray-700 mt-0.5 leading-snug">{summary.currentStatus}</p>
+                    </div>
+                  )}
+                  {summary.keyDetails && summary.keyDetails.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Key details</p>
+                      <ul className="text-xs text-gray-700 mt-0.5 space-y-0.5 list-disc list-inside">
+                        {summary.keyDetails.map((d, i) => (
+                          <li key={i} className="leading-snug">{d}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-gray-400 mt-2">Updated {relativeTime(summary.updatedAt)}</p>
+              </div>
+              <hr className="border-gray-100" />
+            </>
+          )}
+
           {/* Contact */}
           <div>
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Contact</p>

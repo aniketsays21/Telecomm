@@ -15,6 +15,70 @@ export type ChatTurn = {
   content: string;
 };
 
+export type ConversationSummary = {
+  summary: string;
+  whatCustomerWants: string;
+  whatsBeenTried: string;
+  currentStatus: string;
+  keyDetails: string[];
+};
+
+/**
+ * Summarize a conversation for the agent-facing side panel. Returns tight
+ * one/two-line fields the agent can scan in a few seconds instead of reading
+ * the whole thread. Cheap Haiku call — designed to run fire-and-forget after
+ * each AI reply.
+ */
+export async function summarizeConversation(
+  turns: ChatTurn[],
+  brandName?: string,
+): Promise<ConversationSummary> {
+  const transcript = turns
+    .slice(-20)
+    .map((t) => `${t.role === 'user' ? 'Customer' : 'Assistant'}: ${t.content}`)
+    .join('\n');
+
+  const msg = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 400,
+    system: [
+      `Summarize this ${brandName ?? 'brand'} customer-support conversation for an agent picking it up mid-thread.`,
+      'Be terse. Facts only — no filler. Return JSON only:',
+      '{',
+      '  "summary": "<one sentence: what this conversation is about>",',
+      '  "what_customer_wants": "<one sentence>",',
+      '  "whats_been_tried": "<one sentence of what the AI or agent has already suggested; empty string if nothing tried>",',
+      '  "current_status": "<one short phrase: waiting_on_customer | needs_agent | resolved | information_gathering>",',
+      '  "key_details": ["<up to 5 short bullets: order IDs, dates, product names, error messages, anything specific>"]',
+      '}',
+    ].join('\n'),
+    messages: [{ role: 'user', content: transcript || '(empty conversation)' }],
+  });
+  const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '{}';
+  let parsed: {
+    summary?: string;
+    what_customer_wants?: string;
+    whats_been_tried?: string;
+    current_status?: string;
+    key_details?: string[];
+  } = {};
+  try {
+    const m = text.match(/\{[\s\S]*\}/);
+    parsed = JSON.parse(m?.[0] ?? '{}');
+  } catch {
+    // fall through with defaults
+  }
+  return {
+    summary: (parsed.summary ?? 'Conversation with a customer.').toString().slice(0, 500),
+    whatCustomerWants: (parsed.what_customer_wants ?? '').toString().slice(0, 400),
+    whatsBeenTried: (parsed.whats_been_tried ?? '').toString().slice(0, 400),
+    currentStatus: (parsed.current_status ?? '').toString().slice(0, 60),
+    keyDetails: Array.isArray(parsed.key_details)
+      ? parsed.key_details.slice(0, 5).map((d) => String(d).slice(0, 200))
+      : [],
+  };
+}
+
 const client = new Anthropic();
 
 export type ExtractedContact = {
