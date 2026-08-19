@@ -14,6 +14,8 @@ import {
 import { loadWorkspaceSender } from '../../lib/workspace-email.js';
 import { buildReferences } from '../../lib/inbound-email.js';
 import { isNotNull } from 'drizzle-orm';
+import { getFreshAccessToken } from '../../lib/gmail-oauth.js';
+import { sendMessage as gmailSend, GmailApiError } from '../../lib/gmail-client.js';
 
 /**
  * Newest message in the thread that carries a Message-ID, so an agent reply can
@@ -322,30 +324,65 @@ export async function inboxRoutes(app: FastifyInstance) {
       }).where(eq(conversations.id, id));
     }
 
-    // Send email reply if this is an email conversation and SMTP is configured
-    if (replyToEmail && isEmailConfigured()) {
-      try {
-        const info = await sendMail({
-          to: replyToEmail,
-          from: sender.from,
-          fromName: sender.fromName,
-          subject: conv.subject ? `Re: ${conv.subject}` : 'Re: Your support request',
-          text: body.data.body,
-          messageId: outboundMessageId,
-          inReplyTo: parent?.emailMessageId ?? conv.emailThreadId ?? undefined,
-          references: outboundReferences ?? conv.emailThreadId ?? undefined,
-        });
-        const delivered = info?.messageId?.replace(/^<|>$/g, '');
-        if (delivered && delivered !== outboundMessageId) {
+    // Send the reply out. Branch on the mail transport this conversation
+    // lives on: Gmail-born threads send via the connected mailbox so they
+    // stay in the customer's Gmail thread; everything else uses the existing
+    // Postmark/SMTP path.
+    if (replyToEmail) {
+      const subject = conv.subject
+        ? (/^re:/i.test(conv.subject) ? conv.subject : `Re: ${conv.subject}`)
+        : 'Re: Your support request';
+
+      if (conv.emailProvider === 'gmail') {
+        try {
+          const { accessToken } = await getFreshAccessToken(session.workspaceId);
+          const sent = await gmailSend(accessToken, {
+            to: replyToEmail,
+            subject,
+            bodyText: body.data.body,
+            threadId: conv.emailThreadId ?? undefined,
+            inReplyTo: parent?.emailMessageId ?? undefined,
+            references: outboundReferences ?? undefined,
+          });
+          // Persist the Gmail message id as our emailMessageId so the poller's
+          // dedup on messages.emailMessageId no-ops when this send re-appears
+          // through history.
+          if (sent.id) {
+            await db.update(messages)
+              .set({ emailMessageId: sent.id })
+              .where(eq(messages.id, msg.id));
+          }
+        } catch (err) {
+          const detail = err instanceof GmailApiError ? err.body : err instanceof Error ? err.message : String(err);
+          app.log.error({ err: detail }, 'Failed to send Gmail reply');
           await db.update(messages)
-            .set({ emailMessageId: delivered })
+            .set({ deliveryState: 'failed' })
             .where(eq(messages.id, msg.id));
         }
-      } catch (err: any) {
-        app.log.error({ err }, 'Failed to send email reply');
-        await db.update(messages)
-          .set({ deliveryState: 'failed' })
-          .where(eq(messages.id, msg.id));
+      } else if (isEmailConfigured()) {
+        try {
+          const info = await sendMail({
+            to: replyToEmail,
+            from: sender.from,
+            fromName: sender.fromName,
+            subject,
+            text: body.data.body,
+            messageId: outboundMessageId,
+            inReplyTo: parent?.emailMessageId ?? conv.emailThreadId ?? undefined,
+            references: outboundReferences ?? conv.emailThreadId ?? undefined,
+          });
+          const delivered = info?.messageId?.replace(/^<|>$/g, '');
+          if (delivered && delivered !== outboundMessageId) {
+            await db.update(messages)
+              .set({ emailMessageId: delivered })
+              .where(eq(messages.id, msg.id));
+          }
+        } catch (err: any) {
+          app.log.error({ err }, 'Failed to send email reply');
+          await db.update(messages)
+            .set({ deliveryState: 'failed' })
+            .where(eq(messages.id, msg.id));
+        }
       }
     }
 

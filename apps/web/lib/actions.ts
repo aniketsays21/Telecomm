@@ -337,6 +337,81 @@ export async function updateTeamMemberAction(
   }
 }
 
+// ---- Gmail --------------------------------------------------------------
+export async function gmailStartOAuthAction() {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    const { url } = await api.gmailStartOAuth(session.token);
+    return { url };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
+export async function gmailDisconnectAction() {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    await api.gmailDisconnect(session.token);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/gmail');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
+export async function gmailCreateRuleAction(body: {
+  name: string;
+  subjectPattern: string;
+  matchMode: 'contains' | 'starts_with' | 'exact' | 'regex';
+  assigneeId: string;
+  priority?: number;
+  enabled?: boolean;
+}) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    const { rule } = await api.gmailCreateRule(session.token, body);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/gmail');
+    return { success: true, rule };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
+export async function gmailUpdateRuleAction(id: string, patch: Partial<{
+  name: string; subjectPattern: string;
+  matchMode: 'contains' | 'starts_with' | 'exact' | 'regex';
+  assigneeId: string; priority: number; enabled: boolean;
+}>) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    await api.gmailUpdateRule(session.token, id, patch);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/gmail');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
+export async function gmailDeleteRuleAction(id: string) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return;
+  await api.gmailDeleteRule(session.token, id);
+  const { revalidatePath } = await import('next/cache');
+  revalidatePath('/settings/gmail');
+}
+
 export async function inviteUserAction(_prev: unknown, formData: FormData) {
   const { getSession } = await import('./session');
   const session = await getSession();

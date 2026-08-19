@@ -165,6 +165,37 @@ export const api = {
       body: JSON.stringify({ settings }),
     }, token),
 
+  // Gmail
+  gmailStatus: (token: string) =>
+    request<{ connected: boolean; account: GmailAccount | null }>('/gmail/status', {}, token),
+
+  gmailStartOAuth: (token: string) =>
+    request<{ url: string }>('/gmail/oauth/start', {}, token),
+
+  gmailDisconnect: (token: string) =>
+    request<{ ok: boolean }>('/gmail/disconnect', { method: 'POST', body: '{}' }, token),
+
+  gmailListRules: (token: string) =>
+    request<{ rules: GmailRule[] }>('/gmail/rules', {}, token),
+
+  gmailCreateRule: (token: string, body: {
+    name: string; subjectPattern: string; matchMode: 'contains' | 'starts_with' | 'exact' | 'regex';
+    assigneeId: string; priority?: number; enabled?: boolean;
+  }) =>
+    request<{ rule: GmailRule }>('/gmail/rules', { method: 'POST', body: JSON.stringify(body) }, token),
+
+  gmailUpdateRule: (token: string, id: string, patch: Partial<{
+    name: string; subjectPattern: string; matchMode: 'contains' | 'starts_with' | 'exact' | 'regex';
+    assigneeId: string; priority: number; enabled: boolean;
+  }>) =>
+    request<{ ok: boolean }>(`/gmail/rules/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }, token),
+
+  gmailDeleteRule: (token: string, id: string) =>
+    fetch(`${API}/gmail/rules/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
   // Canned responses
   listCannedResponses: (token: string) =>
     request<{ responses: CannedResponse[] }>('/canned-responses', {}, token),
@@ -310,6 +341,28 @@ export type TeamMember = {
   maxConcurrentChats: string | null;
   inviteAcceptedAt: string | null;
   createdAt: string;
+};
+
+export type GmailAccount = {
+  id: string;
+  emailAddress: string;
+  connectedAt: string;
+  lastPolledAt: string | null;
+  lastError: string | null;
+  historyId: string | null;
+};
+
+export type GmailRule = {
+  id: string;
+  name: string;
+  subjectPattern: string;
+  matchMode: 'contains' | 'starts_with' | 'exact' | 'regex';
+  assigneeId: string;
+  priority: number;
+  enabled: boolean;
+  createdAt: string;
+  assigneeName: string | null;
+  assigneeEmail: string | null;
 };
 
 export type CannedResponse = {
