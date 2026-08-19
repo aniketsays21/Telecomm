@@ -44,6 +44,7 @@ export const sources = pgTable('sources', {
   lastError: text('last_error'),
   docCount: integer('doc_count').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  isDemo: boolean('is_demo').notNull().default(false),
 });
 
 export const documents = pgTable('documents', {
@@ -59,6 +60,7 @@ export const documents = pgTable('documents', {
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  isDemo: boolean('is_demo').notNull().default(false),
 }, (t) => [
   index('documents_workspace_idx').on(t.workspaceId),
   index('documents_source_idx').on(t.sourceId),
@@ -73,6 +75,7 @@ export const chunks = pgTable('chunks', {
   tokenCount: integer('token_count').notNull().default(0),
   position: integer('position').notNull().default(0),
   metadata: jsonb('metadata').$type<Record<string, unknown>>().default({}),
+  isDemo: boolean('is_demo').notNull().default(false),
 }, (t) => [
   index('chunks_workspace_idx').on(t.workspaceId),
 ]);
@@ -116,4 +119,5 @@ export const cannedResponses = pgTable('canned_responses', {
   tags: text('tags').array().default([]),
   createdBy: uuid('created_by').references(() => users.id),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  isDemo: boolean('is_demo').notNull().default(false),
 });

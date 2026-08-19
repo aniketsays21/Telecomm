@@ -4,6 +4,47 @@ import { redirect } from 'next/navigation';
 import { api } from './api';
 import { setSession, clearSession } from './session';
 
+// ---- Demo mode ------------------------------------------------------------
+
+export async function demoStatusAction(): Promise<{ enabled: boolean; seededConversations: number } | { error: string }> {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    return await api.demoStatus(session.token);
+  } catch (e: any) {
+    return { error: e?.message ?? 'Could not read demo status' };
+  }
+}
+
+export async function demoEnableAction() {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    const res = await api.demoEnable(session.token);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/', 'layout');
+    return { ...res, ok: true as const };
+  } catch (e: any) {
+    return { error: e?.message ?? 'Could not enable demo mode' };
+  }
+}
+
+export async function demoDisableAction() {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    const res = await api.demoDisable(session.token);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/', 'layout');
+    return { ...res, ok: true as const };
+  } catch (e: any) {
+    return { error: e?.message ?? 'Could not disable demo mode' };
+  }
+}
+
 // ---- Webhooks -------------------------------------------------------------
 
 export async function createWebhookAction(input: { url: string; events: string[]; description?: string }) {

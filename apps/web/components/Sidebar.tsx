@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { logoutAction } from '@/lib/actions';
+import { DemoToggle } from './DemoToggle';
 
 type Props = {
   role: string;
@@ -54,7 +55,7 @@ export function Sidebar({ role, name, email }: Props) {
       style={{ background: 'var(--paper)', borderColor: 'var(--rule)' }}
     >
       {/* Wordmark — clean sans, single accent dot */}
-      <div className="px-5 pt-6 pb-5" style={{ borderBottom: '1px solid var(--rule-2)' }}>
+      <div className="px-5 pt-6 pb-4" style={{ borderBottom: '1px solid var(--rule-2)' }}>
         <div className="flex items-center gap-2">
           <div
             className="w-7 h-7 rounded-md flex items-center justify-center text-white text-sm font-semibold"
@@ -67,6 +68,11 @@ export function Sidebar({ role, name, email }: Props) {
             <p className="text-[10px] leading-tight" style={{ color: 'var(--dust)' }}>Customer support</p>
           </div>
         </div>
+        {role === 'admin' && (
+          <div className="mt-4">
+            <DemoToggle />
+          </div>
+        )}
       </div>
 
       <nav className="flex-1 px-3 pt-4 pb-4 overflow-y-auto">

@@ -37,6 +37,8 @@ export const conversations = pgTable('conversations', {
   snoozedUntil: timestamp('snoozed_until', { withTimezone: true }),
   lastMessageAt: timestamp('last_message_at', { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  // Rows created by the demo-mode seeder. Toggle-off deletes only these.
+  isDemo: boolean('is_demo').notNull().default(false),
 }, (t) => [
   index('conversations_workspace_status_idx').on(t.workspaceId, t.status),
   index('conversations_workspace_assignee_idx').on(t.workspaceId, t.assigneeId),
@@ -69,6 +71,7 @@ export const messages = pgTable('messages', {
   // can render sentiment trajectories over time. One of:
   // 'positive' | 'neutral' | 'negative' | 'frustrated' | 'angry'.
   sentiment: text('sentiment'),
+  isDemo: boolean('is_demo').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index('messages_conversation_idx').on(t.conversationId),

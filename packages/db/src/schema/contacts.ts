@@ -1,4 +1,4 @@
-import { pgTable, text, jsonb, timestamp, uuid, index } from 'drizzle-orm/pg-core';
+import { pgTable, text, jsonb, timestamp, uuid, index, boolean } from 'drizzle-orm/pg-core';
 import { workspaces } from './workspaces';
 
 export const contacts = pgTable('contacts', {
@@ -10,6 +10,7 @@ export const contacts = pgTable('contacts', {
   attributes: jsonb('attributes').$type<Record<string, unknown>>().default({}),
   firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
   lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+  isDemo: boolean('is_demo').notNull().default(false),
 }, (t) => [
   index('contacts_workspace_email_idx').on(t.workspaceId, t.email),
   index('contacts_workspace_external_idx').on(t.workspaceId, t.externalId),

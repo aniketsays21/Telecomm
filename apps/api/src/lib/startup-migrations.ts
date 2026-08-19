@@ -77,6 +77,23 @@ export async function runStartupMigrations(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS "widget_triggers_workspace_idx"
          ON "widget_triggers" ("workspace_id")`,
     ],
+
+    // --- 0006: demo data isolation ---
+    // Every table that can hold seeded rows gets an `is_demo` flag so a
+    // toggle can wipe just the seed without touching real data. Cheap
+    // boolean + partial index for fast filter-outs.
+    ['conversations.is_demo',    `ALTER TABLE "conversations"     ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false`],
+    ['messages.is_demo',         `ALTER TABLE "messages"          ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false`],
+    ['contacts.is_demo',         `ALTER TABLE "contacts"          ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false`],
+    ['sources.is_demo',          `ALTER TABLE "sources"           ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false`],
+    ['documents.is_demo',        `ALTER TABLE "documents"         ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false`],
+    ['chunks.is_demo',           `ALTER TABLE "chunks"            ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false`],
+    ['canned_responses.is_demo', `ALTER TABLE "canned_responses"  ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false`],
+    [
+      'conversations_workspace_demo_idx',
+      `CREATE INDEX IF NOT EXISTS "conversations_workspace_demo_idx"
+         ON "conversations" ("workspace_id") WHERE "is_demo" = true`,
+    ],
   ];
 
   for (const [label, ddl] of statements) {

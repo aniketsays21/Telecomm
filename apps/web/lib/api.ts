@@ -211,6 +211,18 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
     }),
 
+  // Demo mode
+  demoStatus: (token: string) =>
+    request<{ enabled: boolean; seededConversations: number }>('/demo/status', {}, token),
+  demoEnable: (token: string) =>
+    request<{ ok: boolean; alreadySeeded?: boolean; seeded?: Record<string, number> }>(
+      '/demo/enable', { method: 'POST', body: '{}' }, token,
+    ),
+  demoDisable: (token: string) =>
+    request<{ ok: boolean; cleared: Record<string, number> }>(
+      '/demo/disable', { method: 'POST', body: '{}' }, token,
+    ),
+
   // Webhooks
   listWebhooks: (token: string) =>
     request<{ webhooks: Webhook[]; events: string[] }>('/webhooks', {}, token),
