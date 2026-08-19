@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "NODE_USE_ENV_PROXY=1 tsx watch --env-file=../../.env src/index.ts",
-    "build": "tsc",
+    "build": "tsc --noEmit && node build.mjs",
     "start": "node dist/index.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
@@ -31,6 +31,7 @@
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "esbuild": "^0.25.12",
     "tsx": "^4.19.2",
     "typescript": "^5.7.0",
     "vitest": "^3.2.7"

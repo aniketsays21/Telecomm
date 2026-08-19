@@ -26,9 +26,12 @@ export function startEmbedWorker() {
 
       const [embedding] = await embedTexts([chunk.content]);
 
+      // pgvector column expects a number[]; embedTexts already returns number[][].
+      // The old `as unknown as string` cast would have written the array's
+      // toString() representation and produced malformed vectors at runtime.
       await db
         .update(chunks)
-        .set({ embedding: embedding as unknown as string })
+        .set({ embedding })
         .where(eq(chunks.id, chunkId));
 
       return { ok: true };

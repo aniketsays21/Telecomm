@@ -30,10 +30,13 @@ export class EventBus {
   }
 
   async publish<T extends DomainEventType>(event: Omit<DomainEvent<T>, 'id' | 'createdAt'> & { id?: string }) {
+    // Spread the caller's fields FIRST so our generated id/createdAt win.
+    // The previous order let a spread with an undefined `id` clobber the
+    // generated UUID and a missing `createdAt` overwrite the timestamp.
     const full: DomainEvent<T> = {
+      ...(event as DomainEvent<T>),
       id: event.id ?? crypto.randomUUID(),
       createdAt: new Date().toISOString(),
-      ...(event as DomainEvent<T>),
     };
     const channel = `${CHANNEL_PREFIX}:${event.workspaceId}`;
     await this.pub.publish(channel, JSON.stringify(full));

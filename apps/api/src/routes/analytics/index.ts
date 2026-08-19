@@ -102,12 +102,14 @@ export async function analyticsRoutes(app: FastifyInstance) {
         aiResolutionRate: total > 0 ? Math.round((aiResolved / total) * 1000) / 10 : 0,
         avgFirstResponseMs: totals.avgFirstResponseMs ? Math.round(Number(totals.avgFirstResponseMs)) : null,
       },
-      daily: (dailyRows.rows as any[]).map(r => ({
-        day: r.day,
+      // db.execute() returns postgres.js's RowList, which IS the array of rows —
+      // there is no `.rows` wrapper (that shape is node-postgres). Iterate directly.
+      daily: dailyRows.map((r: Record<string, unknown>) => ({
+        day: r.day as string,
         conversations: Number(r.conversations),
         escalations: Number(r.escalations),
       })),
-      topEscalationReasons: (reasonRows.rows as any[]).map(r => ({
+      topEscalationReasons: reasonRows.map((r: Record<string, unknown>) => ({
         reason: r.escalation_reason as string,
         count: Number(r.cnt),
       })),

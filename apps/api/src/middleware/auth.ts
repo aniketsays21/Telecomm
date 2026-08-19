@@ -4,20 +4,30 @@ import { verifySession, SessionPayload } from '../lib/token.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
+    // Populated by the onRequest hook when a valid bearer token is present.
+    // Declared as non-optional because every route handler that touches it goes
+    // through requireAuth first, which 401s and returns when it is missing.
     session: SessionPayload;
   }
 }
 
 const authPlugin: FastifyPluginAsync = async (app) => {
-  app.decorateRequest('session', null);
+  // Fastify v5 dropped the plain `null` default because reference values leak
+  // between requests. A getter satisfies the typed signature and hands each
+  // request a fresh empty session that requireAuth will still reject.
+  app.decorateRequest('session', {
+    getter(): SessionPayload {
+      return undefined as unknown as SessionPayload;
+    },
+  });
 
-  app.addHook('onRequest', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.addHook('onRequest', async (request: FastifyRequest, _reply: FastifyReply) => {
     const token = request.headers.authorization?.replace('Bearer ', '');
     if (!token) return; // Routes that require auth do their own check
     try {
       request.session = await verifySession(token);
     } catch {
-      // Token invalid — leave session null; protected routes will reject
+      // Token invalid — leave session empty; protected routes will reject
     }
   });
 };
