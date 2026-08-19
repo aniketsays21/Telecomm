@@ -21,6 +21,7 @@ const adminNav = [
   { href: '/settings/team', label: 'Team' },
   { href: '/settings/knowledge', label: 'Knowledge Base' },
   { href: '/settings/widget', label: 'Widget' },
+  { href: '/settings/email', label: 'Email' },
   { href: '/settings/canned', label: 'Canned Responses' },
   { href: '/settings/billing', label: 'Billing' },
 ];

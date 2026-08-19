@@ -15,6 +15,7 @@ import { knowledgeRoutes } from './routes/knowledge/index.js';
 import { cannedRoutes } from './routes/canned/index.js';
 import { wsRoutes } from './routes/ws/index.js';
 import { analyticsRoutes } from './routes/analytics/index.js';
+import { inboundEmailRoutes } from './routes/inbound/email.js';
 import { startWorkers } from './workers/index.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -59,6 +60,7 @@ async function build() {
   await app.register(cannedRoutes);
   await app.register(wsRoutes);
   await app.register(analyticsRoutes);
+  await app.register(inboundEmailRoutes);
 
   return app;
 }
