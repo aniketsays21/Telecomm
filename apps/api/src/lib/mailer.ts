@@ -71,3 +71,47 @@ export async function sendMail(opts: MailOptions) {
 export function isEmailConfigured() {
   return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
+
+export async function sendCsatRequest(opts: {
+  to: string;
+  conversationId: string;
+  subject: string;
+}) {
+  const apiUrl = (process.env.PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/$/, '');
+  const base = `${apiUrl}/csat/${opts.conversationId}/rate?rating=`;
+
+  const stars = [1, 2, 3, 4, 5];
+  const labels = ['Poor', 'Fair', 'Good', 'Great', 'Excellent'];
+  const starChar = ['★', '★★', '★★★', '★★★★', '★★★★★'];
+
+  const textBody = [
+    `How was your recent support experience regarding: "${opts.subject}"?`,
+    '',
+    'Click a rating below:',
+    ...stars.map((n, i) => `  ${starChar[i]} ${labels[i]}: ${base}${n}`),
+    '',
+    'Your feedback helps us improve.',
+  ].join('\n');
+
+  const htmlLinks = stars
+    .map(
+      (n, i) =>
+        `<a href="${base}${n}" style="display:inline-block;margin:0 6px;padding:10px 18px;background:#f3f4f6;border-radius:8px;text-decoration:none;color:#111827;font-size:14px;font-weight:600;">${starChar[i]}<br><span style="font-size:11px;color:#6b7280;">${labels[i]}</span></a>`,
+    )
+    .join('');
+
+  const htmlBody = `
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;color:#111827;">
+  <p style="font-size:16px;margin:0 0 8px;">How was your recent support experience?</p>
+  <p style="font-size:13px;color:#6b7280;margin:0 0 24px;">${opts.subject}</p>
+  <div style="text-align:center;margin-bottom:24px;">${htmlLinks}</div>
+  <p style="font-size:12px;color:#9ca3af;margin:0;">Your feedback helps us improve our support.</p>
+</div>`;
+
+  return sendMail({
+    to: opts.to,
+    subject: `How did we do? — ${opts.subject}`,
+    text: textBody,
+    html: htmlBody,
+  });
+}

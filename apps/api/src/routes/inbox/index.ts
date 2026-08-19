@@ -5,7 +5,7 @@ import { db } from '@telecomm/db';
 import { conversations, messages, contacts, users } from '@telecomm/db/schema';
 import { requireAuth } from '../../middleware/auth.js';
 import { broadcastToWorkspace } from '../ws/index.js';
-import { sendMail, isEmailConfigured } from '../../lib/mailer.js';
+import { sendMail, isEmailConfigured, sendCsatRequest } from '../../lib/mailer.js';
 
 export async function inboxRoutes(app: FastifyInstance) {
   // GET /inbox/conversations?status=open&limit=25&cursor=<id>
@@ -208,6 +208,22 @@ export async function inboxRoutes(app: FastifyInstance) {
       .returning();
 
     if (!updated) return reply.code(404).send({ error: 'Not found' });
+
+    // Send CSAT email when resolving a conversation that has a contact email
+    if (body.data.status === 'resolved') {
+      const contactRows = await db
+        .select({ email: contacts.email })
+        .from(contacts)
+        .where(eq(contacts.id, updated.contactId))
+        .limit(1);
+      const contactEmail = contactRows[0]?.email;
+      if (contactEmail) {
+        const subject = updated.subject ?? 'your recent support request';
+        sendCsatRequest({ to: contactEmail, conversationId: id, subject }).catch(
+          (err: any) => app.log.error({ err }, 'Failed to send CSAT email'),
+        );
+      }
+    }
 
     return updated;
   });

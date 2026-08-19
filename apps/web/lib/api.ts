@@ -202,6 +202,8 @@ export type ConversationSummary = {
 
 export type Conversation = ConversationSummary & {
   contactId: string;
+  csatRating: number | null;
+  csatComment: string | null;
 };
 
 export type Contact = {

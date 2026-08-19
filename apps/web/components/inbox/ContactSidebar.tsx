@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition, useRef } from 'react';
 import type { Contact, Conversation } from '@/lib/api';
+import { updateConversationAction } from '@/lib/actions';
 
 interface Props {
   contact: Contact;
@@ -26,6 +27,63 @@ function Row({ label, value }: { label: string; value: string | null | undefined
     <div>
       <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">{label}</p>
       <p className="text-sm text-gray-800 mt-0.5 break-all">{value}</p>
+    </div>
+  );
+}
+
+function TagsEditor({ conversation }: { conversation: Conversation }) {
+  const [tags, setTags] = useState<string[]>(conversation.tags);
+  const [input, setInput] = useState('');
+  const [isPending, startTransition] = useTransition();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function save(next: string[]) {
+    setTags(next);
+    startTransition(() => updateConversationAction(conversation.id, { tags: next }));
+  }
+
+  function addTag() {
+    const trimmed = input.trim().toLowerCase().replace(/\s+/g, '-');
+    if (!trimmed || tags.includes(trimmed)) { setInput(''); return; }
+    save([...tags, trimmed]);
+    setInput('');
+  }
+
+  function removeTag(t: string) {
+    save(tags.filter(x => x !== t));
+  }
+
+  return (
+    <div>
+      <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-1.5">Tags</p>
+      <div className="flex flex-wrap gap-1 mb-1.5">
+        {tags.map(t => (
+          <span key={t} className="flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded-full">
+            {t}
+            <button
+              onClick={() => removeTag(t)}
+              className="ml-0.5 text-indigo-400 hover:text-indigo-700 leading-none"
+              title={`Remove ${t}`}
+            >×</button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-1">
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+          placeholder="Add tag…"
+          className="flex-1 text-xs border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:border-indigo-400 min-w-0"
+          disabled={isPending}
+        />
+        <button
+          onClick={addTag}
+          disabled={isPending || !input.trim()}
+          className="text-xs px-1.5 py-0.5 bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100 disabled:opacity-40"
+        >+</button>
+      </div>
     </div>
   );
 }
@@ -92,21 +150,28 @@ export function ContactSidebar({ contact, conversation }: Props) {
                   )}
                 </div>
               )}
-              {conversation.tags.length > 0 && (
-                <div>
-                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-1">Tags</p>
-                  <div className="flex flex-wrap gap-1">
-                    {conversation.tags.map(t => (
-                      <span key={t} className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full">{t}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <TagsEditor conversation={conversation} />
               {typeof conversation.priority === 'number' && (
                 <Row label="Priority" value={conversation.priority === 0 ? 'Normal' : conversation.priority > 0 ? 'High' : 'Low'} />
               )}
               {conversation.sentiment && (
                 <Row label="Sentiment" value={conversation.sentiment} />
+              )}
+              {typeof conversation.csatRating === 'number' && (
+                <div>
+                  <p className="text-[10px] font-medium text-gray-400 uppercase tracking-wide mb-1">CSAT</p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-amber-400 text-base leading-none">
+                      {'★'.repeat(conversation.csatRating)}{'☆'.repeat(5 - conversation.csatRating)}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {['', 'Poor', 'Fair', 'Good', 'Great', 'Excellent'][conversation.csatRating]}
+                    </span>
+                  </div>
+                  {conversation.csatComment && (
+                    <p className="text-xs text-gray-500 mt-1 italic">"{conversation.csatComment}"</p>
+                  )}
+                </div>
               )}
             </div>
           </div>
