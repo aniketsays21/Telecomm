@@ -94,12 +94,37 @@ export async function addSourceAction(_prev: unknown, formData: FormData) {
   if (!session) return { error: 'Not authenticated' };
 
   const type = formData.get('type') as string;
-  const name = formData.get('name') as string;
+  const nameField = formData.get('name') as string | null;
   const url = formData.get('url') as string | null;
+  const file = formData.get('file') as File | null;
+
+  // File uploads arrive as multipart/form-data. We base64-encode server-side
+  // and forward as `content` — the API accepts either a URL (crawled) or an
+  // inline content string (indexed directly). 25 MB is the hard cap.
+  let name = nameField ?? '';
+  let content: string | undefined;
+  let fileName: string | undefined;
+  let fileMime: string | undefined;
+  if (type === 'file') {
+    if (!file || file.size === 0) return { error: 'Choose a file to upload.' };
+    if (file.size > 25 * 1024 * 1024) {
+      return { error: `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 25 MB.` };
+    }
+    const buf = Buffer.from(await file.arrayBuffer());
+    content = buf.toString('base64');
+    fileName = file.name;
+    fileMime = file.type || 'application/octet-stream';
+    if (!name) name = file.name;
+  }
 
   try {
     const { api } = await import('./api');
-    await api.addSource(session.token, { type, name, url: url ?? undefined });
+    await api.addSource(session.token, {
+      type,
+      name,
+      url: url ?? undefined,
+      ...(content ? { content, fileName, fileMime } : {}),
+    });
     return { success: true };
   } catch (e: any) {
     return { error: e.message };
@@ -128,7 +153,9 @@ export async function completeOnboardingAction() {
   if (!session) redirect('/login');
   const { api } = await import('./api');
   await api.completeOnboarding(session!.token);
-  redirect('/inbox');
+  // Land admins on the Dashboard (analytics) — the first thing they should see
+  // once live is the shape of what's about to happen, not an empty inbox.
+  redirect(session!.role === 'admin' ? '/analytics' : '/inbox');
 }
 
 export async function sendMessageAction(conversationId: string, body: string, isInternalNote = false) {

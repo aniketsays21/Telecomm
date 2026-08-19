@@ -3,6 +3,6 @@ import { getSession } from '@/lib/session';
 
 export default async function Home() {
   const session = await getSession();
-  if (session) redirect('/inbox');
+  if (session) redirect(session.role === 'admin' ? '/analytics' : '/inbox');
   redirect('/login');
 }

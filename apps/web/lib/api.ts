@@ -77,7 +77,10 @@ export const api = {
       '/onboarding/email', { method: 'POST', body: JSON.stringify({ supportEmail }) }, token
     ),
 
-  addSource: (token: string, body: { type: string; name: string; url?: string; fileName?: string; fileMime?: string }) =>
+  addSource: (
+    token: string,
+    body: { type: string; name: string; url?: string; content?: string; fileName?: string; fileMime?: string },
+  ) =>
     request<{ source: { id: string; type: string; name: string } }>(
       '/onboarding/sources', { method: 'POST', body: JSON.stringify(body) }, token
     ),

@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@telecomm/db';
-import { gmailAccounts, gmailRoutingRules, users } from '@telecomm/db/schema';
+import { gmailAccounts, gmailRoutingRules, users, workspaces } from '@telecomm/db/schema';
 import { requireAdmin, requireAuth } from '../../middleware/auth.js';
 import { buildAuthUrl, exchangeCode, signState, verifyState, GMAIL_SCOPE, redirectUri, redirectUriMisconfigured } from '../../lib/gmail-oauth.js';
 import { encrypt } from '../../lib/gmail-crypto.js';
@@ -65,8 +65,21 @@ export const gmailRoutes: FastifyPluginAsync = async (app) => {
   // ---- OAuth callback -----------------------------------------------------
   // Google redirects the browser here with ?code=&state=. We exchange the
   // code, learn which mailbox this is, and store it against the workspace
-  // encoded in `state`. Then we bounce the browser back to /settings/gmail.
+  // encoded in `state`. Then we bounce the browser back — to /onboarding if
+  // the workspace is still being set up, or /settings/gmail if it's already
+  // live and the admin is reconnecting from settings.
   const settingsUrl = () => `${webUrl()}/settings/gmail`;
+  async function successUrl(workspaceId: string): Promise<string> {
+    try {
+      const [ws] = await db
+        .select({ isLive: workspaces.isLive })
+        .from(workspaces)
+        .where(eq(workspaces.id, workspaceId))
+        .limit(1);
+      if (ws && !ws.isLive) return `${webUrl()}/onboarding?connected=1`;
+    } catch { /* fall through to settings */ }
+    return `${settingsUrl()}?connected=1`;
+  }
 
   app.get('/gmail/oauth/callback', async (request: FastifyRequest, reply: FastifyReply) => {
     const q = z.object({
@@ -142,7 +155,24 @@ export const gmailRoutes: FastifyPluginAsync = async (app) => {
         },
       });
 
-    return reply.redirect(`${settingsUrl()}?connected=1`);
+    // Mark the onboarding email step done so the wizard knows to skip past it
+    // on the next reload — the flag lives on workspace.onboardingState.
+    try {
+      const [ws] = await db
+        .select({ onboardingState: workspaces.onboardingState })
+        .from(workspaces)
+        .where(eq(workspaces.id, sessionState.workspaceId))
+        .limit(1);
+      const nextState = { ...((ws?.onboardingState as object) ?? {}), emailConnected: true };
+      await db
+        .update(workspaces)
+        .set({ onboardingState: nextState as typeof workspaces.$inferInsert.onboardingState, updatedAt: new Date() })
+        .where(eq(workspaces.id, sessionState.workspaceId));
+    } catch (err) {
+      app.log.warn({ err }, 'gmail oauth: could not update onboardingState (non-fatal)');
+    }
+
+    return reply.redirect(await successUrl(sessionState.workspaceId));
   });
 
   // ---- Disconnect ---------------------------------------------------------

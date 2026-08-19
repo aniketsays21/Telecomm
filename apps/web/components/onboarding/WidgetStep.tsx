@@ -1,22 +1,27 @@
 'use client';
 
 import { useState } from 'react';
-import { markWidgetSeenAction, completeOnboardingAction } from '@/lib/actions';
+import { markWidgetSeenAction } from '@/lib/actions';
 
 type Props = {
   snippet: string;
   workspaceName: string;
+  onDone: () => void;
 };
 
-export function WidgetStep({ snippet, workspaceName }: Props) {
+export function WidgetStep({ snippet, onDone }: Props) {
   const [copied, setCopied] = useState(false);
 
   async function copySnippet() {
     await navigator.clipboard.writeText(snippet);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-    // mark widget step as seen server-side (fire and forget)
     markWidgetSeenAction().catch(() => {});
+  }
+
+  function handleContinue() {
+    markWidgetSeenAction().catch(() => {});
+    onDone();
   }
 
   return (
@@ -33,7 +38,8 @@ export function WidgetStep({ snippet, workspaceName }: Props) {
         </div>
       </div>
 
-      {/* Code block */}
+      {/* Code block — the snippet the server hands us already contains the
+          real workspaceId and the actual API URL for this deployment. */}
       <div className="relative mb-6">
         <pre className="bg-gray-900 text-green-400 text-sm rounded-xl p-5 overflow-x-auto font-mono leading-relaxed">
           {snippet}
@@ -51,32 +57,27 @@ export function WidgetStep({ snippet, workspaceName }: Props) {
         <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-3">What happens next</p>
         <div className="space-y-2">
           {[
-            { icon: '🔄', text: 'We index your knowledge sources in the background (takes a few minutes).' },
-            { icon: '🤖', text: 'The AI bot will answer your customers using your knowledge base.' },
-            { icon: '👤', text: 'Queries the AI can\'t handle are escalated to you in the inbox.' },
-            { icon: '🧪', text: 'You can chat with your own bot in the sandbox before it goes live.' },
-          ].map((item, i) => (
+            'We index your knowledge sources in the background (takes a few minutes).',
+            'The AI bot answers your customers using your knowledge base.',
+            "Queries the AI can't handle are escalated to your agents.",
+            'You can chat with your own bot in the sandbox before it goes live.',
+          ].map((text, i) => (
             <div key={i} className="flex items-start gap-2 text-sm text-blue-800">
-              <span>{item.icon}</span>
-              <span>{item.text}</span>
+              <span className="mt-0.5">•</span>
+              <span>{text}</span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* CTA */}
-      <div className="flex items-center justify-between">
-        <p className="text-xs text-gray-400">
-          You can paste this snippet later from Settings → Widget.
-        </p>
-        <form action={completeOnboardingAction}>
-          <button
-            type="submit"
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors"
-          >
-            Go to inbox →
-          </button>
-        </form>
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={handleContinue}
+          className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-lg transition-colors"
+        >
+          Continue →
+        </button>
       </div>
     </div>
   );

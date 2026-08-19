@@ -1,38 +1,50 @@
 'use client';
 
-import { useState } from 'react';
-import { useActionState } from 'react';
-import { useFormStatus } from 'react-dom';
-import { connectEmailAction } from '@/lib/actions';
-
-function SubmitBtn() {
-  const { pending } = useFormStatus();
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-sm font-medium rounded-lg transition-colors"
-    >
-      {pending ? 'Saving…' : 'Connect & continue'}
-    </button>
-  );
-}
+import { useEffect, useState, useTransition } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { gmailStartOAuthAction } from '@/lib/actions';
 
 type Props = {
-  inboundEmail: string;
-  onDone: (inboundEmail: string) => void;
+  onDone: () => void;
+  initiallyConnectedAs?: string | null;
 };
 
-export function EmailStep({ inboundEmail, onDone }: Props) {
-  const [state, formAction] = useActionState(connectEmailAction, undefined);
-  const [confirmed, setConfirmed] = useState(false);
+/**
+ * Gmail OAuth is the only supported email integration now — Postmark forwarding
+ * was retired to remove the confusing "forward mail to this address" step.
+ * Admins click Connect Gmail → Google → land back here with `?connected=1`.
+ */
+export function EmailStep({ onDone, initiallyConnectedAs = null }: Props) {
+  const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [connectedAs, setConnectedAs] = useState<string | null>(initiallyConnectedAs);
+  const params = useSearchParams();
 
-  // If server returned success, show forwarding instructions
-  if (state && 'success' in state && state.inboundEmail) {
-    // Capture the narrowed value into a local const — inside the closures
-    // below TypeScript drops the narrowing on `state.inboundEmail` and
-    // widens it back to `string | undefined`.
-    const connectedInbound: string = state.inboundEmail;
+  // If Gmail OAuth just completed, the callback bounces us to
+  // /settings/gmail?connected=1 — but for onboarding we bounce here instead.
+  useEffect(() => {
+    if (params?.get('connected') === '1' && !connectedAs) {
+      // We don't know the mailbox address without another API call; the
+      // parent page passed it via `initiallyConnectedAs` on a fresh load,
+      // but on the same-tab OAuth return the parent didn't get a chance to
+      // re-render with fresh data. Show a generic "connected" state.
+      setConnectedAs('your Gmail account');
+    }
+  }, [params, connectedAs]);
+
+  function connectGmail() {
+    setError(null);
+    startTransition(async () => {
+      const res = await gmailStartOAuthAction();
+      if ('url' in res && res.url) {
+        window.location.href = res.url;
+      } else if ('error' in res) {
+        setError(res.error ?? 'Could not start Gmail OAuth');
+      }
+    });
+  }
+
+  if (connectedAs) {
     return (
       <div className="p-8">
         <div className="flex items-start gap-4 mb-6">
@@ -40,56 +52,18 @@ export function EmailStep({ inboundEmail, onDone }: Props) {
             <span className="text-green-600 text-lg">✓</span>
           </div>
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Email connected</h2>
-            <p className="text-sm text-gray-500 mt-0.5">Now set up forwarding in your email provider.</p>
+            <h2 className="text-lg font-semibold text-gray-900">Gmail connected</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              Emails from{' '}
+              <span className="font-medium text-gray-800">{connectedAs}</span>
+              {' '}will appear in your inbox based on the routing rules you set later.
+            </p>
           </div>
         </div>
-
-        <div className="bg-indigo-50 rounded-xl p-5 mb-6">
-          <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-2">Your Telecomm inbound address</p>
-          <div className="flex items-center gap-2">
-            <code className="text-sm font-mono text-indigo-900 bg-white px-3 py-1.5 rounded-lg border border-indigo-100 flex-1">
-              {connectedInbound}
-            </code>
-            <button
-              onClick={() => navigator.clipboard.writeText(connectedInbound)}
-              className="px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-colors"
-            >
-              Copy
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-3 mb-6">
-          <p className="text-sm font-medium text-gray-700">What to do next:</p>
-          <ol className="space-y-2 text-sm text-gray-600 list-none">
-            {[
-              `Go to your email provider (Gmail, Outlook, etc.)`,
-              `Set up forwarding from your support address to the Telecomm address above`,
-              `Or set the Telecomm address as the reply-to on your support email`,
-            ].map((step, i) => (
-              <li key={i} className="flex items-start gap-3">
-                <span className="w-5 h-5 bg-gray-100 text-gray-500 rounded-full text-xs flex items-center justify-center shrink-0 mt-0.5">{i+1}</span>
-                <span>{step}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={confirmed}
-              onChange={e => setConfirmed(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-300 text-indigo-600"
-            />
-            <span className="text-sm text-gray-700">I've set up forwarding</span>
-          </label>
+        <div className="flex items-center justify-end">
           <button
-            disabled={!confirmed}
-            onClick={() => onDone(connectedInbound)}
-            className="ml-auto px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-medium rounded-lg transition-colors"
+            onClick={onDone}
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors"
           >
             Continue →
           </button>
@@ -105,44 +79,44 @@ export function EmailStep({ inboundEmail, onDone }: Props) {
           <span className="text-blue-600 text-lg">✉</span>
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-gray-900">Connect your support email</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Connect your support Gmail</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            Customer emails will arrive as tickets in your inbox. You'll forward them to a Telecomm address.
+            Sign in with the Gmail account customers write to. Only emails matching
+            your rules become conversations — everything else stays in Gmail.
           </p>
         </div>
       </div>
 
-      <form action={formAction} className="space-y-5">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Your support email address
-          </label>
-          <input
-            name="supportEmail"
-            type="email"
-            required
-            placeholder="support@yourbrand.com"
-            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <p className="text-xs text-gray-400 mt-1">
-            The address customers email. We'll tell you where to forward it.
-          </p>
-        </div>
+      <ul className="text-sm text-gray-600 space-y-2 mb-6 list-none">
+        {[
+          'Google prompts for permission — you approve the exact mailbox.',
+          'We only read messages matching subject rules you configure.',
+          'Agents reply from the dashboard; replies send from your Gmail address.',
+        ].map((line, i) => (
+          <li key={i} className="flex items-start gap-3">
+            <span className="w-5 h-5 bg-gray-100 text-gray-500 rounded-full text-xs flex items-center justify-center shrink-0 mt-0.5">{i + 1}</span>
+            <span>{line}</span>
+          </li>
+        ))}
+      </ul>
 
-        {state && 'error' in state && (
-          <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg">{state.error}</p>
-        )}
+      {error && (
+        <p className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded-lg mb-4">{error}</p>
+      )}
 
-        <div className="flex items-center justify-between pt-2">
-          <p className="text-xs text-gray-400">
-            Already using {inboundEmail}?{' '}
-            <button type="button" onClick={() => onDone(inboundEmail)} className="text-indigo-500 hover:underline">
-              Skip
-            </button>
-          </p>
-          <SubmitBtn />
-        </div>
-      </form>
+      <div className="flex items-center justify-between pt-2">
+        <p className="text-xs text-gray-400">
+          You can skip this and connect later from Settings → Gmail.
+        </p>
+        <button
+          type="button"
+          onClick={connectGmail}
+          disabled={isPending}
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-sm font-medium rounded-lg transition-colors"
+        >
+          {isPending ? 'Opening Google…' : 'Connect Gmail'}
+        </button>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { getSession } from '@/lib/session';
 import { api } from '@/lib/api';
 import { AnalyticsDashboard } from '@/components/analytics/AnalyticsDashboard';
+import { EmptyDashboard } from '@/components/analytics/EmptyDashboard';
 import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
@@ -64,7 +65,10 @@ export default async function AnalyticsPage({ searchParams }: Props) {
           </p>
         </div>
       )}
-      {data && <AnalyticsDashboard initial={data} />}
+      {data && ((data.summary?.total ?? 0) === 0
+        ? <EmptyDashboard />
+        : <AnalyticsDashboard initial={data} />
+      )}
     </div>
   );
 }

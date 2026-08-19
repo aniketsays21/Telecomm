@@ -3,19 +3,22 @@ import { getSession } from '@/lib/session';
 import { api } from '@/lib/api';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 
+export const dynamic = 'force-dynamic';
+
 export default async function OnboardingPage() {
   const session = await getSession();
   if (!session) redirect('/login');
   if (session.role !== 'admin') redirect('/inbox');
 
-  const [data, me] = await Promise.all([
+  const [data, me, gmailStatus] = await Promise.all([
     api.getOnboarding(session.token).catch(() => null),
     api.me(session.token).catch(() => null),
+    api.gmailStatus(session.token).catch(() => ({ connected: false, account: null })),
   ]);
   if (!data) redirect('/inbox');
 
-  // If already live, send to inbox
-  if (data.isLive) redirect('/inbox');
+  // If already live, send to dashboard
+  if (data.isLive) redirect('/analytics');
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-12">
@@ -32,6 +35,7 @@ export default async function OnboardingPage() {
         initialData={data}
         workspaceName={session.name}
         initialAvailability={me?.availability ?? null}
+        initialGmailAddress={gmailStatus.connected ? (gmailStatus.account?.emailAddress ?? null) : null}
       />
     </div>
   );

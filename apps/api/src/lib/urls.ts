@@ -38,6 +38,32 @@ export function apiUrl(): string {
   return 'http://localhost:4000';
 }
 
+/**
+ * Prefer the API's configured public URL, but fall back to the URL Nirvana
+ * infers from THIS request's Host header when no env is set. This keeps the
+ * onboarding widget snippet from ever handing the admin a `localhost:4000`
+ * link in production just because the API service is missing PUBLIC_API_URL /
+ * API_URL — a foot-gun the customer can't fix without redeploying.
+ *
+ * If both env and request headers are absent (should be impossible on a real
+ * request), falls back to the localhost default.
+ */
+export function apiUrlFromRequest(req: {
+  headers: Record<string, string | string[] | undefined>;
+  protocol?: string;
+}): string {
+  const explicit = process.env.API_URL?.trim() || process.env.PUBLIC_API_URL?.trim();
+  if (explicit) return stripTrailingSlash(explicit);
+  const railway = railwayPublicUrl();
+  if (railway) return railway;
+  const forwardedHost = String(req.headers['x-forwarded-host'] ?? '').split(',')[0]?.trim();
+  const host = forwardedHost || String(req.headers['host'] ?? '').trim();
+  if (!host) return 'http://localhost:4000';
+  const forwardedProto = String(req.headers['x-forwarded-proto'] ?? '').split(',')[0]?.trim();
+  const proto = forwardedProto || (req.protocol === 'https' ? 'https' : 'https');
+  return `${proto}://${host}`;
+}
+
 /** URL used in mail body links pointing back at the API (e.g. tracking pixels). */
 export function publicApiUrl(): string {
   const explicit = process.env.PUBLIC_API_URL?.trim() || process.env.API_URL?.trim();

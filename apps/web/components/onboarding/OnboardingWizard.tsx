@@ -5,42 +5,53 @@ import type { OnboardingData, AgentAvailability } from '@/lib/api';
 import { EmailStep } from './EmailStep';
 import { SourcesStep } from './SourcesStep';
 import { WidgetStep } from './WidgetStep';
-import { HoursStep } from './HoursStep';
+import { TeamStep } from './TeamStep';
 
-type Step = 'hours' | 'email' | 'sources' | 'widget';
+// New order: connect email FIRST (Gmail OAuth), then knowledge base, then
+// install the widget, and finally set up the team + their working hours —
+// the "when are you available" question makes more sense once the workspace
+// actually has agents.
+type Step = 'email' | 'sources' | 'widget' | 'team';
 
 const STEPS: { id: Step; label: string; description: string }[] = [
-  { id: 'hours', label: 'Your hours', description: 'When escalations should route to you' },
-  { id: 'email', label: 'Connect email', description: 'Receive customer emails as tickets' },
+  { id: 'email',   label: 'Connect email', description: 'Sign in with Google so support emails route in' },
   { id: 'sources', label: 'Add knowledge', description: 'Help docs, website, or files for the AI' },
-  { id: 'widget', label: 'Install widget', description: 'Paste one script tag on your site' },
+  { id: 'widget',  label: 'Install widget', description: 'Paste one script tag on your site' },
+  { id: 'team',    label: 'Invite your team', description: 'Add agents and their working hours' },
 ];
 
 type Props = {
   initialData: OnboardingData;
   workspaceName: string;
   initialAvailability: AgentAvailability | null;
+  initialGmailAddress: string | null;
 };
 
-export function OnboardingWizard({ initialData, workspaceName, initialAvailability }: Props) {
+export function OnboardingWizard({
+  initialData,
+  workspaceName,
+  initialAvailability,
+  initialGmailAddress,
+}: Props) {
+  // The email step is done as soon as Gmail is connected; the API flag lags
+  // because the OAuth callback lands on gmail routes, not onboarding.
+  const emailDone = !!initialGmailAddress || !!initialData.onboardingState.emailConnected;
   const firstIncomplete = (): Step => {
-    if (!initialAvailability || (initialAvailability.schedule ?? []).length === 0) return 'hours';
-    if (!initialData.onboardingState.emailConnected) return 'email';
+    if (!emailDone) return 'email';
     if (!initialData.onboardingState.sourcesConnected) return 'sources';
-    return 'widget';
+    if (!initialData.onboardingState.widgetInstalled) return 'widget';
+    return 'team';
   };
 
   const [currentStep, setCurrentStep] = useState<Step>(firstIncomplete);
   const [completedSteps, setCompletedSteps] = useState<Set<Step>>(() => {
     const s = new Set<Step>();
-    if (initialAvailability && (initialAvailability.schedule ?? []).length > 0) s.add('hours');
-    if (initialData.onboardingState.emailConnected) s.add('email');
+    if (emailDone) s.add('email');
     if (initialData.onboardingState.sourcesConnected) s.add('sources');
     if (initialData.onboardingState.widgetInstalled) s.add('widget');
     return s;
   });
   const [sources, setSources] = useState(initialData.sources);
-  const [inboundEmail, setInboundEmail] = useState(initialData.inboundEmail);
 
   function markDone(step: Step) {
     setCompletedSteps(prev => new Set([...prev, step]));
@@ -48,9 +59,9 @@ export function OnboardingWizard({ initialData, workspaceName, initialAvailabili
 
   function advance(from: Step) {
     markDone(from);
-    if (from === 'hours') setCurrentStep('email');
-    else if (from === 'email') setCurrentStep('sources');
+    if (from === 'email') setCurrentStep('sources');
     else if (from === 'sources') setCurrentStep('widget');
+    else if (from === 'widget') setCurrentStep('team');
   }
 
   return (
@@ -87,14 +98,8 @@ export function OnboardingWizard({ initialData, workspaceName, initialAvailabili
 
       {/* Step card */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        {currentStep === 'hours' && (
-          <HoursStep initial={initialAvailability} onDone={() => advance('hours')} />
-        )}
         {currentStep === 'email' && (
-          <EmailStep
-            inboundEmail={inboundEmail}
-            onDone={(email) => { setInboundEmail(email); advance('email'); }}
-          />
+          <EmailStep onDone={() => advance('email')} initiallyConnectedAs={initialGmailAddress} />
         )}
         {currentStep === 'sources' && (
           <SourcesStep
@@ -108,12 +113,16 @@ export function OnboardingWizard({ initialData, workspaceName, initialAvailabili
           <WidgetStep
             snippet={initialData.widgetSnippet}
             workspaceName={workspaceName}
+            onDone={() => advance('widget')}
           />
+        )}
+        {currentStep === 'team' && (
+          <TeamStep initialAvailability={initialAvailability} />
         )}
       </div>
 
-      {/* Skip link */}
-      {currentStep !== 'widget' && (
+      {/* Skip link — only for steps before the final one */}
+      {currentStep !== 'team' && (
         <div className="text-center mt-4">
           <button
             onClick={() => advance(currentStep)}

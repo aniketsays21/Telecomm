@@ -133,6 +133,17 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
         setMsgs(prev => {
           const additions: Msg[] = [];
           for (const m of news) {
+            // Advance the watermark for every message we see, including our
+            // own echoed user turns — otherwise the next poll fetches them
+            // again and we test the id set on unbounded history.
+            if (m.createdAt > lastSeenAtRef.current) {
+              lastSeenAtRef.current = m.createdAt;
+            }
+            // Skip user-role messages: the widget already inserted them
+            // optimistically on send with a client-side id, so a poll
+            // echoing them back would double-render every message the
+            // customer typed. Only agent/bot messages come from outside.
+            if (m.role === 'user') continue;
             if (seenIdsRef.current.has(m.id)) continue;
             seenIdsRef.current.add(m.id);
             additions.push({
@@ -142,9 +153,6 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
               time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             });
             if (m.role === 'bot') unseenBotArrivals++;
-            if (m.createdAt > lastSeenAtRef.current) {
-              lastSeenAtRef.current = m.createdAt;
-            }
           }
           return additions.length ? [...prev, ...additions] : prev;
         });
