@@ -161,6 +161,11 @@ export const api = {
   syncSource: (token: string, id: string) =>
     request<{ queued: boolean }>(`/kb/sources/${id}/sync`, { method: 'POST', body: '{}' }, token),
 
+  seedSampleKb: (token: string) =>
+    request<{ ok: boolean; created: number; alreadyPresent: number }>(
+      '/kb/sources/seed-samples', { method: 'POST', body: '{}' }, token,
+    ),
+
   // Analytics
   getAnalytics: (token: string, days = 30) =>
     request<AnalyticsData>(`/analytics?days=${days}`, {}, token),

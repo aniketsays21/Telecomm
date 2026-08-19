@@ -4,6 +4,20 @@ import { redirect } from 'next/navigation';
 import { api } from './api';
 import { setSession, clearSession } from './session';
 
+export async function seedSampleKbAction() {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    const res = await api.seedSampleKb(session.token);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/knowledge');
+    return { ok: true, created: res.created, alreadyPresent: res.alreadyPresent };
+  } catch (e: any) {
+    return { error: e?.message ?? 'Could not load sample content' };
+  }
+}
+
 // ---- Custom domains -------------------------------------------------------
 
 export async function addDomainAction(hostname: string) {

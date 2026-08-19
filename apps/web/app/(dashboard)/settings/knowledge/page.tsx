@@ -3,6 +3,7 @@ import { getSession } from '@/lib/session';
 import { api } from '@/lib/api';
 import { KbSourceList } from '@/components/knowledge/KbSourceList';
 import { AddSourceForm } from '@/components/knowledge/AddSourceForm';
+import { SeedSampleButton } from '@/components/knowledge/SeedSampleButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,13 +16,14 @@ export default async function KnowledgePage() {
 
   return (
     <div className="p-8 max-w-3xl">
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Knowledge Base</h1>
           <p className="text-gray-500 text-sm mt-0.5">
-            Sources are chunked, embedded, and searched by the AI when answering customer questions.
+            Sources are chunked, indexed, and searched by the AI when answering customer questions.
           </p>
         </div>
+        <SeedSampleButton />
       </div>
 
       {/* Source list */}

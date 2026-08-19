@@ -81,6 +81,96 @@ export async function summarizeConversation(
 
 const client = new Anthropic();
 
+type ParsedEnvelope = {
+  answer?: string;
+  confidence?: number;
+  needs_human?: boolean;
+  escalation_reason?: string | null;
+  topic?: string;
+  sentiment?: string;
+  language?: string;
+  extracted?: { email?: string | null; name?: string | null; order_id?: string | null };
+};
+
+/**
+ * Robustly parse the model's JSON envelope WITHOUT ever leaking the raw text
+ * to the customer.
+ *
+ * The model is asked to return a `{ answer, confidence, … }` JSON object, but
+ * it occasionally emits invalid JSON — most commonly unescaped double-quotes
+ * inside the `answer` string (e.g. `"answer": "…by "session timing" — …"`),
+ * which makes `JSON.parse` throw. The old fallback then dumped the entire raw
+ * envelope (```json fences and all) into the chat bubble. This function never
+ * does that:
+ *
+ *   1. Strip any markdown code fences, then try a straight JSON.parse.
+ *   2. On failure, salvage each field with a field-anchored regex. The answer
+ *      is captured as everything between `"answer":"` and the next known key
+ *      (`","confidence"`), so unescaped inner quotes don't break it.
+ *   3. If even the answer can't be salvaged, return a safe generic reply —
+ *      never the raw model output.
+ */
+function parseAiEnvelope(raw: string): ParsedEnvelope {
+  // Drop ```json … ``` fences the model sometimes wraps the object in.
+  const text = raw.replace(/```(?:json)?/gi, '').trim();
+
+  // Fast path: valid JSON.
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      return JSON.parse(objMatch[0]) as ParsedEnvelope;
+    } catch {
+      /* fall through to salvage */
+    }
+  }
+
+  // Salvage path — anchored extraction that tolerates unescaped quotes.
+  const out: ParsedEnvelope = {};
+
+  // answer: capture up to the next top-level key so inner quotes are fine.
+  const answerMatch =
+    text.match(/"answer"\s*:\s*"([\s\S]*?)"\s*,\s*"confidence"/) ||
+    text.match(/"answer"\s*:\s*"([\s\S]*?)"\s*[,}]/);
+  if (answerMatch) {
+    out.answer = answerMatch[1]
+      .replace(/\\"/g, '"')
+      .replace(/\\n/g, '\n')
+      .replace(/\\\\/g, '\\')
+      .trim();
+  }
+
+  const conf = text.match(/"confidence"\s*:\s*([0-9]*\.?[0-9]+)/);
+  if (conf) out.confidence = Number(conf[1]);
+
+  const nh = text.match(/"needs_human"\s*:\s*(true|false)/);
+  if (nh) out.needs_human = nh[1] === 'true';
+
+  const topic = text.match(/"topic"\s*:\s*"([^"]+)"/);
+  if (topic) out.topic = topic[1];
+
+  const sentiment = text.match(/"sentiment"\s*:\s*"([^"]+)"/);
+  if (sentiment) out.sentiment = sentiment[1];
+
+  const language = text.match(/"language"\s*:\s*"([^"]+)"/);
+  if (language) out.language = language[1];
+
+  const reason = text.match(/"escalation_reason"\s*:\s*"([^"]+)"/);
+  if (reason) out.escalation_reason = reason[1];
+
+  // Last resort: no answer field at all. If the raw text is short and clearly
+  // NOT a JSON dump (no braces), use it as-is — the model may have replied in
+  // plain prose. Otherwise return a safe generic message; never show JSON.
+  if (!out.answer) {
+    const looksLikeJson = /[{}]|"answer"|"confidence"/.test(text);
+    out.answer = !looksLikeJson && text.length > 0 && text.length < 600
+      ? text
+      : "I'm sorry, I didn't quite catch that — could you rephrase what you need help with?";
+    out.confidence = out.confidence ?? 0.4;
+  }
+
+  return out;
+}
+
 export type ExtractedContact = {
   /** Customer email address, if mentioned in this message or a prior one. */
   email?: string;
@@ -195,6 +285,7 @@ export async function generateAnswer(
     settings?.systemInstructions ? `Additional instructions from ${brand}:\n${settings.systemInstructions}` : '',
     '',
     'Return JSON only, matching this schema exactly. The `answer` field is what the customer sees — include markdown-style links [label](URL) inline where they help.',
+    'CRITICAL JSON RULE: inside the "answer" string value, never use raw double-quote characters — use single quotes for any quoted phrase (e.g. write \'session timing\', not "session timing"). Any double-quote inside a value must be escaped as \\". Emit valid JSON only — no markdown code fences, no ```json wrapper.',
     '{',
     '  "answer": "<what to say to the customer, 2-5 sentences, may contain [label](URL) markdown links to KB articles>",',
     '  "confidence": <0.0-1.0>,',
@@ -224,23 +315,7 @@ export async function generateAnswer(
   });
 
   const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '{}';
-
-  let parsed: {
-    answer?: string;
-    confidence?: number;
-    needs_human?: boolean;
-    escalation_reason?: string | null;
-    topic?: string;
-    sentiment?: string;
-    language?: string;
-    extracted?: { email?: string | null; name?: string | null; order_id?: string | null };
-  } = {};
-  try {
-    const m = text.match(/\{[\s\S]*\}/);
-    parsed = JSON.parse(m?.[0] ?? '{}');
-  } catch {
-    parsed = { answer: text.slice(0, 500), confidence: 0.4 };
-  }
+  const parsed = parseAiEnvelope(text);
 
   const confidence = Math.max(0, Math.min(1, parsed.confidence ?? 0.4));
   // Model's explicit flag overrides the threshold — the model has the full
