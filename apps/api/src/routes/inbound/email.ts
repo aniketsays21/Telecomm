@@ -262,19 +262,48 @@ export async function inboundEmailRoutes(app: FastifyInstance) {
     let escalated = false;
 
     try {
+      const priorRows = await db
+        .select({ authorType: messages.authorType, body: messages.body })
+        .from(messages)
+        .where(eq(messages.conversationId, conversation.id))
+        .orderBy(messages.createdAt);
+      const history = priorRows.slice(-10).map((r) => ({
+        role: (r.authorType === 'contact' ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: r.body,
+      }));
+
       const queryEmbedding = await embedQuery(text || rawSubject);
       const chunks = await searchChunks(workspaceId, queryEmbedding, 5);
-      const aiAnswer = await generateAnswer(text || rawSubject, chunks, ws.settings as any);
+      const aiAnswer = await generateAnswer(
+        text || rawSubject,
+        chunks,
+        { ...(ws.settings as any), brandName: ws.name },
+        history,
+      );
 
       replyText = aiAnswer.answer;
 
+      // Persist any info the AI parsed from the email body so agents don't
+      // re-ask for it.
+      if (aiAnswer.extracted?.name && (!contact.name || contact.name === contact.email?.split('@')[0])) {
+        await db.update(contacts).set({ name: aiAnswer.extracted.name }).where(eq(contacts.id, contact.id));
+      }
+
+      const convoUpdate: Record<string, unknown> = {};
+      if (aiAnswer.topic) {
+        const existingTags = (conversation.tags ?? []) as string[];
+        if (!existingTags.includes(aiAnswer.topic)) {
+          convoUpdate.tags = [...existingTags, aiAnswer.topic];
+        }
+      }
       if (aiAnswer.shouldEscalate) {
         escalated = true;
-        await db.update(conversations).set({
-          aiHandled: false,
-          escalatedAt: new Date(),
-          escalationReason: aiAnswer.escalationReason,
-        }).where(eq(conversations.id, conversation.id));
+        convoUpdate.aiHandled = false;
+        convoUpdate.escalatedAt = new Date();
+        convoUpdate.escalationReason = aiAnswer.escalationReason;
+      }
+      if (Object.keys(convoUpdate).length) {
+        await db.update(conversations).set(convoUpdate as any).where(eq(conversations.id, conversation.id));
       }
     } catch (err: any) {
       app.log.error({ err }, 'AI reply failed for inbound email');

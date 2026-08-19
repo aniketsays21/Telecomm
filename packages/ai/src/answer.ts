@@ -9,13 +9,32 @@ export type SearchResult = {
   url: string | null;
 };
 
+/** One prior message in the conversation so the AI can respond in context. */
+export type ChatTurn = {
+  role: 'user' | 'assistant';
+  content: string;
+};
+
 const client = new Anthropic();
+
+export type ExtractedContact = {
+  /** Customer email address, if mentioned in this message or a prior one. */
+  email?: string;
+  /** Customer name, if given. */
+  name?: string;
+  /** Order ID / reference number, if quoted. */
+  orderId?: string;
+};
 
 export type AIAnswer = {
   answer: string;
   confidence: number;
   shouldEscalate: boolean;
   escalationReason?: string;
+  /** Fields the AI parsed out of the customer's message(s), to save on the contact. */
+  extracted?: ExtractedContact;
+  /** Short topic label the AI infers ("shipping", "refund", "sizing"…). Powers analytics. */
+  topic?: string;
   sources: Array<{
     documentId: string;
     title: string;
@@ -25,50 +44,106 @@ export type AIAnswer = {
   }>;
 };
 
-const THRESHOLDS = { cautious: 0.85, balanced: 0.70, confident: 0.55 } as const;
+const THRESHOLDS = { cautious: 0.85, balanced: 0.60, confident: 0.45 } as const;
 
+/**
+ * Ask the model, grounded in retrieved knowledge, with the running
+ * conversation history so it can behave like a real support rep:
+ *
+ *   • Greet on the first turn, then get to work.
+ *   • ASK CLARIFYING QUESTIONS instead of dumping a generic answer —
+ *     order ID for order questions, product SKU for sizing/stock,
+ *     email address for anything account-specific.
+ *   • Only escalate when the question is genuinely out of scope or
+ *     needs a human decision (refunds outside policy, complaints,
+ *     custom deals). Missing info is a follow-up, not an escalation.
+ *   • Return any info the customer volunteered so we can update the
+ *     contact record and the agent picks up an already-identified user.
+ */
 export async function generateAnswer(
   question: string,
   chunks: SearchResult[],
-  settings?: { botName?: string; escalationThreshold?: string },
+  settings?: {
+    botName?: string;
+    brandName?: string;
+    escalationThreshold?: string;
+    systemInstructions?: string;
+  },
+  history: ChatTurn[] = [],
 ): Promise<AIAnswer> {
-  const threshold = THRESHOLDS[(settings?.escalationThreshold as keyof typeof THRESHOLDS) ?? 'balanced'] ?? 0.70;
+  const threshold = THRESHOLDS[(settings?.escalationThreshold as keyof typeof THRESHOLDS) ?? 'balanced'] ?? 0.60;
   const botName = settings?.botName ?? 'Assistant';
+  const brand = settings?.brandName ?? 'our team';
 
-  if (chunks.length === 0) {
-    return {
-      answer: "I don't have enough information to answer that. Let me connect you with a human agent.",
-      confidence: 0,
-      shouldEscalate: true,
-      escalationReason: 'No relevant knowledge base content found',
-      sources: [],
-    };
-  }
+  const context = chunks.length
+    ? chunks
+        .map((c, i) => `[${i + 1}] ${c.title}\n${c.content.slice(0, 800)}`)
+        .join('\n\n---\n\n')
+    : '(No relevant knowledge base content matched this question.)';
 
-  const context = chunks
-    .map((c, i) => `[${i + 1}] Source: ${c.title}\n${c.content.slice(0, 600)}`)
-    .join('\n\n---\n\n');
+  // Keep the last ~10 turns to bound context. Older stuff falls off; the
+  // model still sees the current question below.
+  const trimmed = history.slice(-10);
+  const transcript = trimmed
+    .map((t) => `${t.role === 'user' ? 'Customer' : 'Assistant'}: ${t.content}`)
+    .join('\n');
+
+  const system = [
+    `You are ${botName}, a customer-support assistant for ${brand}.`,
+    '',
+    'Your job:',
+    '- Answer questions using ONLY the knowledge base excerpts below when they cover the topic.',
+    '- If the excerpts do not cover it, say so honestly and offer to connect a human.',
+    '- Have a real conversation: greet on the first turn, then respond to what the customer says.',
+    '- ASK for the specific info you need instead of guessing:',
+    '    • Order / delivery questions → ask for the order ID or order confirmation email.',
+    '    • Account / login questions → ask for the email on their account.',
+    '    • Product-specific (size, stock, variant) → ask which product / SKU.',
+    '    • Complaints / refunds → gather name, order ID, and a short description before escalating.',
+    '- Keep replies short (2–4 sentences). Never invent facts, prices, policies, or dates.',
+    '- Persist any info the customer volunteers into the extracted fields so the human agent has it.',
+    '',
+    'Escalate to a human ONLY when: the customer explicitly asks for one, the request needs a policy exception, or the knowledge base has nothing relevant AND you already asked one clarifying question.',
+    '',
+    settings?.systemInstructions ? `Additional instructions from ${brand}:\n${settings.systemInstructions}` : '',
+    '',
+    'Return JSON only, matching this schema exactly:',
+    '{',
+    '  "answer": "<what to say to the customer, 2-4 sentences>",',
+    '  "confidence": <0.0-1.0>,',
+    '  "needs_human": <true if a human should take over, else false>,',
+    '  "escalation_reason": <short string when needs_human is true, else null>,',
+    '  "topic": <one lowercase phrase categorizing the customer\'s intent: "shipping" / "returns" / "refund" / "sizing" / "account" / "pricing" / "tech-issue" / "complaint" / "general" — pick the closest>,',
+    '  "extracted": { "email": <string|null>, "name": <string|null>, "order_id": <string|null> }',
+    '}',
+  ].filter(Boolean).join('\n');
+
+  const userContent = [
+    'Knowledge base excerpts (may be empty):',
+    context,
+    '',
+    transcript ? `Conversation so far:\n${transcript}` : '',
+    '',
+    `Current customer message: ${question}`,
+  ].filter(Boolean).join('\n\n');
 
   const msg = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 512,
-    messages: [{
-      role: 'user',
-      content: `You are ${botName}, a helpful customer support AI. Answer ONLY using the provided knowledge base context. If the context doesn't cover the question well, say so.
-
-Knowledge base context:
-${context}
-
-Customer question: ${question}
-
-Respond with JSON only:
-{"answer":"<2-3 sentence answer>","confidence":<0.0-1.0>,"escalation_reason":"<if confidence < 0.7, why you're unsure, else null>"}`,
-    }],
+    max_tokens: 700,
+    system,
+    messages: [{ role: 'user', content: userContent }],
   });
 
-  const text = msg.content[0].type === 'text' ? msg.content[0].text : '{}';
+  const text = msg.content[0]?.type === 'text' ? msg.content[0].text : '{}';
 
-  let parsed: { answer?: string; confidence?: number; escalation_reason?: string | null } = {};
+  let parsed: {
+    answer?: string;
+    confidence?: number;
+    needs_human?: boolean;
+    escalation_reason?: string | null;
+    topic?: string;
+    extracted?: { email?: string | null; name?: string | null; order_id?: string | null };
+  } = {};
   try {
     const m = text.match(/\{[\s\S]*\}/);
     parsed = JSON.parse(m?.[0] ?? '{}');
@@ -77,13 +152,28 @@ Respond with JSON only:
   }
 
   const confidence = Math.max(0, Math.min(1, parsed.confidence ?? 0.4));
-  const shouldEscalate = confidence < threshold;
+  // Model's explicit flag overrides the threshold — the model has the full
+  // context to decide; the threshold is just a floor for silent low quality.
+  const shouldEscalate = parsed.needs_human === true || confidence < threshold;
+
+  const extracted: ExtractedContact = {};
+  if (parsed.extracted?.email && typeof parsed.extracted.email === 'string') {
+    extracted.email = parsed.extracted.email.trim();
+  }
+  if (parsed.extracted?.name && typeof parsed.extracted.name === 'string') {
+    extracted.name = parsed.extracted.name.trim();
+  }
+  if (parsed.extracted?.order_id && typeof parsed.extracted.order_id === 'string') {
+    extracted.orderId = parsed.extracted.order_id.trim();
+  }
 
   return {
-    answer: parsed.answer ?? "I'm not sure. Let me connect you with a human agent.",
+    answer: parsed.answer ?? "I'm not sure yet — could you share a bit more about what you're trying to do?",
     confidence,
     shouldEscalate,
-    escalationReason: shouldEscalate ? (parsed.escalation_reason ?? 'Low confidence') : undefined,
+    escalationReason: shouldEscalate ? (parsed.escalation_reason ?? 'Needs human review') : undefined,
+    extracted: Object.keys(extracted).length ? extracted : undefined,
+    topic: parsed.topic?.toString().slice(0, 40),
     sources: chunks.slice(0, 3).map(c => ({
       documentId: c.documentId,
       title: c.title,

@@ -240,10 +240,13 @@ export type AnalyticsData = {
     escalationRate: number;
     aiResolutionRate: number;
     avgFirstResponseMs: number | null;
+    avgResolutionMinutes: number | null;
   };
   daily: Array<{ day: string; conversations: number; escalations: number }>;
   topEscalationReasons: Array<{ reason: string; count: number }>;
   channelSplit: Array<{ channel: string; count: number }>;
+  topContacts: Array<{ id: string; label: string; email: string | null; count: number }>;
+  topTopics: Array<{ topic: string; count: number }>;
 };
 
 export type WorkspaceSettings = {

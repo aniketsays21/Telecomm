@@ -94,25 +94,61 @@ export async function chatRoutes(app: FastifyInstance) {
     let aiConfidence: string | undefined;
 
     try {
+      // Load the last ~10 turns so the AI can respond in context rather than
+      // treat every message as a cold open. Ordered oldest → newest.
+      const priorRows = await db
+        .select({ authorType: messages.authorType, body: messages.body })
+        .from(messages)
+        .where(eq(messages.conversationId, conversation.id))
+        .orderBy(messages.createdAt);
+      const history = priorRows.slice(-10).map((r) => ({
+        role: (r.authorType === 'contact' ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: r.body,
+      }));
+
       const queryEmbedding = await embedQuery(message);
       const chunks = await searchChunks(workspaceId, queryEmbedding, 5);
-      const aiAnswer = await generateAnswer(message, chunks, ws.settings as any);
+      const aiAnswer = await generateAnswer(
+        message,
+        chunks,
+        { ...(ws.settings as any), brandName: ws.name },
+        history,
+      );
 
       replyText = aiAnswer.answer;
       aiConfidence = String(aiAnswer.confidence.toFixed(2));
 
+      // Persist anything the AI extracted from the customer's message so the
+      // human agent picks up an already-identified visitor and repeat sessions
+      // recognise them.
+      if (aiAnswer.extracted) {
+        const contactUpdate: Record<string, unknown> = {};
+        if (aiAnswer.extracted.email && !contact.email) contactUpdate.email = aiAnswer.extracted.email;
+        if (aiAnswer.extracted.name && (!contact.name || contact.name === 'Visitor')) {
+          contactUpdate.name = aiAnswer.extracted.name;
+        }
+        if (Object.keys(contactUpdate).length) {
+          await db.update(contacts).set(contactUpdate).where(eq(contacts.id, contact.id));
+        }
+      }
+
+      // Attach the AI's inferred topic as a tag so analytics can group by it.
+      // We de-dupe against existing tags to avoid growing the array unboundedly.
+      const nextConvoUpdate: Record<string, unknown> = { lastMessageAt: new Date() };
+      if (aiAnswer.topic) {
+        const existingTags = (conversation.tags ?? []) as string[];
+        if (!existingTags.includes(aiAnswer.topic)) {
+          nextConvoUpdate.tags = [...existingTags, aiAnswer.topic];
+        }
+      }
       if (aiAnswer.shouldEscalate) {
         escalated = true;
-        await db.update(conversations).set({
-          aiHandled: false,
-          escalatedAt: new Date(),
-          escalationReason: aiAnswer.escalationReason,
-          lastMessageAt: new Date(),
-        }).where(eq(conversations.id, conversation.id));
-      } else {
-        await db.update(conversations).set({ lastMessageAt: new Date() })
-          .where(eq(conversations.id, conversation.id));
+        nextConvoUpdate.aiHandled = false;
+        nextConvoUpdate.escalatedAt = new Date();
+        nextConvoUpdate.escalationReason = aiAnswer.escalationReason;
       }
+      await db.update(conversations).set(nextConvoUpdate)
+        .where(eq(conversations.id, conversation.id));
 
       // Save AI reply message
       const [aiMsg] = await db.insert(messages).values({

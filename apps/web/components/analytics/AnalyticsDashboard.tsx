@@ -93,7 +93,12 @@ interface Props {
 
 export function AnalyticsDashboard({ initial }: Props) {
   const [data] = useState(initial);
-  const { summary, daily, topEscalationReasons, channelSplit } = data;
+  const { summary, daily, topEscalationReasons, channelSplit, topContacts, topTopics } = data;
+  const resolutionLabel = summary.avgResolutionMinutes == null
+    ? '—'
+    : summary.avgResolutionMinutes < 60
+      ? `${summary.avgResolutionMinutes}m`
+      : `${Math.round(summary.avgResolutionMinutes / 6) / 10}h`;
 
   return (
     <div className="space-y-8">
@@ -115,11 +120,16 @@ export function AnalyticsDashboard({ initial }: Props) {
         />
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard
           label="Avg First Response"
           value={fmt(summary.avgFirstResponseMs)}
           sub="Agent replies only"
+        />
+        <StatCard
+          label="Avg Resolution Time"
+          value={resolutionLabel}
+          sub="Open → resolved"
         />
         <StatCard label="Agent Resolved" value={summary.agentResolved} />
         <div className="bg-white rounded-xl border border-gray-200 p-5">
@@ -140,6 +150,56 @@ export function AnalyticsDashboard({ initial }: Props) {
       <div className="bg-white rounded-xl border border-gray-200 p-6">
         <h3 className="text-sm font-semibold text-gray-800 mb-4">Daily Volume</h3>
         <BarChart data={daily} />
+      </div>
+
+      {/* Two-column: top topics + top contacts */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h3 className="text-sm font-semibold text-gray-800 mb-4">Top Problems Customers Face</h3>
+          {topTopics.length === 0 ? (
+            <p className="text-sm text-gray-400">No tagged conversations yet — the AI tags each thread with its topic (shipping / refund / sizing…) as it replies.</p>
+          ) : (
+            <div className="space-y-2">
+              {topTopics.map((t, i) => {
+                const max = topTopics[0].count;
+                return (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between mb-0.5">
+                        <p className="text-sm text-gray-700 truncate capitalize">{t.topic.replace(/-/g, ' ')}</p>
+                        <span className="text-xs text-gray-500 ml-2 shrink-0">{t.count}</span>
+                      </div>
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${(t.count / max) * 100}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 p-6">
+          <h3 className="text-sm font-semibold text-gray-800 mb-4">Top Contacts by Volume</h3>
+          {topContacts.length === 0 ? (
+            <p className="text-sm text-gray-400">No conversations yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {topContacts.map((c) => (
+                <div key={c.id} className="flex items-center justify-between text-sm py-1 border-b border-gray-50 last:border-none">
+                  <div className="min-w-0 flex-1 mr-3">
+                    <p className="text-gray-800 truncate">{c.label}</p>
+                    {c.email && c.email !== c.label && (
+                      <p className="text-xs text-gray-400 truncate">{c.email}</p>
+                    )}
+                  </div>
+                  <span className="font-semibold text-gray-900 shrink-0">{c.count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Escalation reasons */}
