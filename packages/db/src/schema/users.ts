@@ -1,4 +1,4 @@
-import { AnyPgColumn, pgTable, text, jsonb, timestamp, uuid, pgEnum } from 'drizzle-orm/pg-core';
+import { AnyPgColumn, pgTable, text, jsonb, timestamp, uuid, pgEnum, boolean } from 'drizzle-orm/pg-core';
 import { workspaces } from './workspaces';
 
 export const userRoleEnum = pgEnum('user_role', ['admin', 'agent', 'readonly']);
@@ -22,6 +22,9 @@ export const users = pgTable('users', {
   inviteAcceptedAt: timestamp('invite_accepted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  // Users created by the demo-mode seeder. Wipe on demo toggle-off deletes
+  // exactly these rows so real teammates are never touched.
+  isDemo: boolean('is_demo').notNull().default(false),
 });
 
 export type AgentAvailability = {

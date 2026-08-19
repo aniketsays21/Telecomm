@@ -330,6 +330,7 @@ export type ConversationSummary = {
   createdAt: string;
   contact: { id: string; name: string | null; email: string | null };
   assigneeId: string | null;
+  assigneeName: string | null;
   priority: number;
   sentiment: string | null;
   tags: string[];
@@ -440,6 +441,10 @@ export type TeamMember = {
   maxConcurrentChats: string | null;
   inviteAcceptedAt: string | null;
   createdAt: string;
+  /** Total conversations ever assigned to this teammate. */
+  chatsHandled?: number;
+  /** Conversations currently open (status = 'open') assigned to this teammate. */
+  chatsOpen?: number;
 };
 
 export type GmailAccount = {

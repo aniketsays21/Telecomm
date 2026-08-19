@@ -71,6 +71,9 @@ export async function inboxRoutes(app: FastifyInstance) {
         : undefined,
     ].filter(Boolean) as any[];
 
+    // Left-join `users` so we can carry the assignee's display name into
+    // the list row — the inbox needs to show "Assigned to Priya" without a
+    // second round-trip per row.
     const rows = await db
       .select({
         id: conversations.id,
@@ -88,6 +91,7 @@ export async function inboxRoutes(app: FastifyInstance) {
           email: contacts.email,
         },
         assigneeId: conversations.assigneeId,
+        assigneeName: users.name,
         priority: conversations.priority,
         sentiment: conversations.sentiment,
         tags: conversations.tags,
@@ -95,6 +99,7 @@ export async function inboxRoutes(app: FastifyInstance) {
       })
       .from(conversations)
       .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+      .leftJoin(users, eq(users.id, conversations.assigneeId))
       .where(and(...filters))
       .orderBy(desc(conversations.lastMessageAt))
       .limit(query.limit);

@@ -89,6 +89,7 @@ export async function runStartupMigrations(): Promise<void> {
     ['documents.is_demo',        `ALTER TABLE "documents"         ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false`],
     ['chunks.is_demo',           `ALTER TABLE "chunks"            ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false`],
     ['canned_responses.is_demo', `ALTER TABLE "canned_responses"  ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false`],
+    ['users.is_demo',            `ALTER TABLE "users"             ADD COLUMN IF NOT EXISTS "is_demo" boolean NOT NULL DEFAULT false`],
     [
       'conversations_workspace_demo_idx',
       `CREATE INDEX IF NOT EXISTS "conversations_workspace_demo_idx"

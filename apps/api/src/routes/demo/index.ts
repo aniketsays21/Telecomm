@@ -10,6 +10,7 @@ import {
   documents,
   chunks,
   cannedResponses,
+  users,
 } from '@telecomm/db/schema';
 import { requireAdmin } from '../../middleware/auth.js';
 
@@ -141,6 +142,15 @@ const TAG_TEMPLATES: Array<{
   },
 ];
 
+const DEMO_AGENTS = [
+  { name: 'Priya Nair',       email: 'priya.support@demo.telecomm',  status: 'online'  as const },
+  { name: 'Rohan Kapoor',     email: 'rohan.support@demo.telecomm',  status: 'online'  as const },
+  { name: 'Emily Chen',       email: 'emily.support@demo.telecomm',  status: 'away'    as const },
+  { name: 'Karan Mehta',      email: 'karan.support@demo.telecomm',  status: 'online'  as const },
+  { name: 'Anika Rao',        email: 'anika.support@demo.telecomm',  status: 'offline' as const },
+  { name: 'Marcus Johnson',   email: 'marcus.support@demo.telecomm', status: 'online'  as const },
+];
+
 const CANNED_RESPONSES = [
   { title: 'Order status', shortcut: 'orderstatus', body: 'Thanks for reaching out! I\'m checking your order status now and will get back within a few minutes.', tag: 'shipping' },
   { title: 'Refund initiated', shortcut: 'refundstart', body: 'Your refund has been initiated. Please allow 5–7 business days for it to appear on your original payment method.', tag: 'refund' },
@@ -264,7 +274,7 @@ export const demoRoutes: FastifyPluginAsync = async (app) => {
 
     // Cascade order: chunks → documents → sources; messages → conversations →
     // contacts; canned responses. Row counts collected for the response.
-    const counts = { messages: 0, conversations: 0, contacts: 0, chunks: 0, documents: 0, sources: 0, canned: 0 };
+    const counts = { messages: 0, conversations: 0, contacts: 0, chunks: 0, documents: 0, sources: 0, canned: 0, agents: 0 };
 
     const delMessages = await db.delete(messages)
       .where(and(eq(messages.workspaceId, wid), eq(messages.isDemo, true)))
@@ -301,6 +311,13 @@ export const demoRoutes: FastifyPluginAsync = async (app) => {
       .returning({ id: cannedResponses.id });
     counts.canned = delCanned.length;
 
+    // Delete demo agents LAST — messages / conversations referenced them via
+    // assignee_id and author_id. Those got cleared above; now the FK is free.
+    const delAgents = await db.delete(users)
+      .where(and(eq(users.workspaceId, wid), eq(users.isDemo, true)))
+      .returning({ id: users.id });
+    counts.agents = delAgents.length;
+
     request.log.info({ workspaceId: wid, counts }, 'demo cleared');
     return { ok: true, cleared: counts };
   });
@@ -309,6 +326,25 @@ export const demoRoutes: FastifyPluginAsync = async (app) => {
 // ---- seeder ---------------------------------------------------------------
 
 async function seedWorkspace(workspaceId: string) {
+  // --- Demo teammates — the workspace's admin sees "5 agents on the team"
+  //     instead of just themselves. Each agent gets a plausible name +
+  //     always-available schedule so the on-duty picker considers them, and
+  //     invite_accepted_at is stamped so they don't show a "pending" chip. ---
+  const insertedAgents = await db.insert(users).values(
+    DEMO_AGENTS.map((a) => ({
+      workspaceId,
+      name: a.name,
+      email: a.email,
+      role: 'agent' as const,
+      status: a.status,
+      // No passwordHash → they can't sign in, but the API doesn't need it
+      // to route conversations to them.
+      inviteAcceptedAt: new Date(Date.now() - Math.floor(Math.random() * 30) * 86400_000),
+      maxConcurrentChats: String(4 + Math.floor(Math.random() * 6)),
+      isDemo: true,
+    })),
+  ).returning({ id: users.id, name: users.name });
+
   // --- Contacts (unique senders reused across their conversations) ---
   const contactCount = 120;
   const contactRows: Array<{ id: string; email: string; name: string }> = [];
@@ -408,6 +444,16 @@ async function seedWorkspace(workspaceId: string) {
     const resolvedAt = status === 'resolved' ? new Date(createdAt.getTime() + randInt(30, 24 * 60) * 60_000) : undefined;
     const subject = channel === 'email' ? rand(template.subjects) : null;
 
+    // Assignment: every escalated conversation gets an agent (mandatory —
+    // that's the whole point of escalation), and ~40% of everything else does
+    // too, so the inbox has a healthy mix of "assigned to X" rows to demo
+    // the routing UI. Resolved-by-agent implies the agent handled it end to
+    // end, so those always carry an assignee.
+    const shouldAssign = escalated
+      || (resolvedAt && randBool(0.7))
+      || randBool(0.4);
+    const assignedAgent = shouldAssign ? rand(insertedAgents) : null;
+
     const [convo] = await db.insert(conversations).values({
       workspaceId,
       contactId: contact.id,
@@ -424,6 +470,8 @@ async function seedWorkspace(workspaceId: string) {
       priority: escalated ? randInt(1, 3) : 0,
       sentiment,
       tags: [template.tag],
+      assigneeId: assignedAgent?.id ?? null,
+      assignedAt: assignedAgent ? new Date(createdAt.getTime() + randInt(1, 15) * 60_000) : null,
       createdAt,
       isDemo: true,
     }).returning();
@@ -447,11 +495,16 @@ async function seedWorkspace(workspaceId: string) {
               "I've applied a courtesy credit to your account for the inconvenience.",
             ])
           : subst(template.aiReply, vars);
+      // For agent turns, prefer the assignee (that's who would really be
+      // replying). Fall back to any demo agent if none was picked.
+      const agentAuthorId = isAgent
+        ? (assignedAgent?.id ?? rand(insertedAgents).id)
+        : (isCustomer ? contact.id : null);
       await db.insert(messages).values({
         conversationId: convo.id,
         workspaceId,
         authorType: isCustomer ? 'contact' : isAgent ? 'agent' : 'ai',
-        authorId: isCustomer ? contact.id : null,
+        authorId: agentAuthorId,
         body,
         sentiment: isCustomer ? sentiment : null,
         createdAt: new Date(ts),
@@ -465,6 +518,7 @@ async function seedWorkspace(workspaceId: string) {
   for (let i = 0; i < EMAIL_COUNT; i++) await insertRow('email');
 
   return {
+    agents: insertedAgents.length,
     contacts: insertedContacts.length,
     conversations: convoCount,
     messages: msgCount,

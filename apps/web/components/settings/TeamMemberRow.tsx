@@ -48,6 +48,18 @@ export function TeamMemberRow({ member }: { member: TeamMember }) {
           <p className="text-xs text-gray-500 truncate">{member.email}</p>
           <p className="text-xs text-gray-400 mt-0.5">{scheduleSummary(member)}</p>
         </div>
+        <div className="hidden sm:flex flex-col items-end gap-0.5 mr-4 shrink-0">
+          <p className="text-[11px] text-gray-400 uppercase tracking-wide">Chats</p>
+          <p className="text-sm font-numeric" style={{ color: 'var(--ink)' }}>
+            <span className="font-semibold">{member.chatsHandled ?? 0}</span>
+            <span className="text-gray-400"> handled</span>
+          </p>
+          {(member.chatsOpen ?? 0) > 0 && (
+            <p className="text-[11px] font-numeric" style={{ color: 'var(--forest)' }}>
+              {member.chatsOpen} open now
+            </p>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <label className="text-xs text-gray-500">Max chats</label>
           <input

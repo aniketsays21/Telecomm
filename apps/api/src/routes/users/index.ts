@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { db } from '@telecomm/db';
 import { users, workspaces } from '@telecomm/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { requireAdmin, requireAuth } from '../../middleware/auth.js';
 import { randomBytes } from 'crypto';
 import { webUrl } from '../../lib/urls.js';
@@ -140,12 +140,30 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
   app.get('/users', async (request, reply) => {
     const session = requireAdmin(request, reply);
     if (!session) return;
-    const members = await db.select({
-      id: users.id, email: users.email, name: users.name, role: users.role, status: users.status,
-      availability: users.availability, maxConcurrentChats: users.maxConcurrentChats,
-      inviteAcceptedAt: users.inviteAcceptedAt, createdAt: users.createdAt,
-    }).from(users).where(eq(users.workspaceId, session.workspaceId));
-    return members;
+    // Join in per-agent conversation counts so the Team page can show
+    // "N chats handled" without a second round-trip per row. Uses two
+    // aggregate subqueries against conversations: total ever-assigned +
+    // currently open. Cheap because conversations_workspace_assignee_idx
+    // already exists.
+    const rows = await db.execute(sql`
+      SELECT
+        u.id, u.email, u.name, u.role, u.status,
+        u.availability, u.max_concurrent_chats AS "maxConcurrentChats",
+        u.invite_accepted_at AS "inviteAcceptedAt", u.created_at AS "createdAt",
+        COALESCE((
+          SELECT COUNT(*)::int FROM conversations c
+          WHERE c.workspace_id = ${session.workspaceId}::uuid AND c.assignee_id = u.id
+        ), 0) AS "chatsHandled",
+        COALESCE((
+          SELECT COUNT(*)::int FROM conversations c
+          WHERE c.workspace_id = ${session.workspaceId}::uuid
+            AND c.assignee_id = u.id AND c.status = 'open'
+        ), 0) AS "chatsOpen"
+      FROM users u
+      WHERE u.workspace_id = ${session.workspaceId}::uuid
+      ORDER BY u.role, u.created_at
+    `);
+    return rows;
   });
 
   // PATCH /users/:id — admin updates a teammate

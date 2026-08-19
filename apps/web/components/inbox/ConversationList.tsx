@@ -83,7 +83,7 @@ export function ConversationList({ conversations, hasMore }: Props) {
                 {conv.subject ?? (conv.channel === 'chat' ? 'Chat session' : 'Email')}
               </p>
 
-              <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--ash)' }}>
+              <div className="flex items-center gap-3 text-[11px] flex-wrap" style={{ color: 'var(--ash)' }}>
                 <span style={{ color: 'var(--dust)' }}>
                   {conv.channel === 'chat' ? 'Chat' : 'Email'}
                 </span>
@@ -93,6 +93,21 @@ export function ConversationList({ conversations, hasMore }: Props) {
                 )}
                 {conv.aiHandled && !isEscalated && (
                   <span className="status-dot" style={{ color: 'var(--forest)' }}>AI handled</span>
+                )}
+                {conv.assigneeName && (
+                  <span
+                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
+                    style={{ background: 'var(--forest-soft)', color: 'var(--forest)' }}
+                    title={`Assigned to ${conv.assigneeName}`}
+                  >
+                    <span
+                      className="w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-semibold text-white"
+                      style={{ background: 'var(--forest)' }}
+                    >
+                      {conv.assigneeName[0]?.toUpperCase() ?? '?'}
+                    </span>
+                    <span className="truncate max-w-[110px]">{conv.assigneeName}</span>
+                  </span>
                 )}
                 {sla === 'breached' && (
                   <span className="status-dot font-numeric" style={{ color: 'var(--brick)' }}>SLA over</span>

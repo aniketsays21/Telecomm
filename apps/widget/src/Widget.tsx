@@ -124,10 +124,10 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
   // Unread count for the launcher badge — bumps every time a bot/agent message
   // arrives while the window is closed, resets to 0 when the customer opens it.
   const [unread, setUnread] = useState(0);
-  // First human agent who joined the thread — powers the "Aniket is here"
-  // hand-off banner. Sticky: once a real person joins, we keep showing them
-  // even after they reply, because the AI badge would feel like a downgrade.
-  const [liveAgent, setLiveAgent] = useState<string | null>(null);
+  // Which agents we've already announced ("Aniket is joining in ~2 mins")
+  // as an inline system message. Sticky per-agent so the same person doesn't
+  // trigger repeat announcements every time they send another line.
+  const announcedAgentsRef = useRef<Set<string>>(new Set());
   // Proactive-trigger scheduling. Loaded once per session and de-duped in
   // localStorage so a returning visitor doesn't get the same nudge every
   // page they touch. Only fires if the widget is currently closed.
@@ -243,7 +243,6 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
         );
         if (cancelled || news.length === 0) return;
         let unseenReplies = 0;
-        let joinedAgent: string | null = null;
         setMsgs(prev => {
           const additions: Msg[] = [];
           for (const m of news) {
@@ -260,6 +259,25 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
             if (m.role === 'user') continue;
             if (seenIdsRef.current.has(m.id)) continue;
             seenIdsRef.current.add(m.id);
+
+            // First message from any specific agent → inject a small bot
+            // announcement right before their bubble so the customer knows
+            // the person by name and doesn't feel dumped mid-thread. Using
+            // agent name as the dedup key means the same person taking over
+            // again on a later day only announces once.
+            if (m.role === 'agent') {
+              const name = m.agentName ?? 'A teammate';
+              if (!announcedAgentsRef.current.has(name)) {
+                announcedAgentsRef.current.add(name);
+                additions.push({
+                  id: `sys-join-${name}-${m.id}`,
+                  role: 'bot',
+                  body: `${name} is joining in ~2 mins.`,
+                  time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                });
+              }
+            }
+
             additions.push({
               id: m.id,
               role: m.role,
@@ -267,14 +285,10 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
               agentName: m.agentName,
               time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             });
-            if (m.role === 'agent' && !joinedAgent) {
-              joinedAgent = m.agentName ?? 'A teammate';
-            }
             if (m.role === 'bot' || m.role === 'agent') unseenReplies++;
           }
           return additions.length ? [...prev, ...additions] : prev;
         });
-        if (joinedAgent) setLiveAgent(joinedAgent);
         // Rename for clarity — everything unseen goes to the badge, not just AI.
         const unseenBotArrivals = unseenReplies;
         // Only badge messages the customer hasn't seen yet — if the panel is
@@ -368,25 +382,14 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
 
       {/* Chat window */}
       <div id="tc-window" class={open ? '' : 'tc-hidden'} role="dialog" aria-label="Support chat">
-        {/* Header — swaps into a "live agent joined" state as soon as a human
-             replies for the first time. Sticky so the AI badge doesn't reappear
-             mid-conversation and confuse the customer. */}
-        <div id="tc-header" class={liveAgent ? 'tc-header-live' : ''}>
+        {/* Header — stable copy. Handoff signal moves into the message thread
+             itself (a small "Aniket is joining in ~2 mins" bot line, plus the
+             agent name above their bubble) so the header never covers the
+             customer's most recent message. */}
+        <div id="tc-header">
           <div>
-            {liveAgent ? (
-              <>
-                <h2>
-                  <span class="tc-agent-dot" aria-hidden="true" />
-                  {liveAgent} is here
-                </h2>
-                <p>You&apos;re now chatting with a human — messages go straight to them.</p>
-              </>
-            ) : (
-              <>
-                <h2>Support Chat</h2>
-                <p>We typically reply within a few minutes</p>
-              </>
-            )}
+            <h2>Support Chat</h2>
+            <p>We typically reply within a few minutes</p>
           </div>
           <button class="tc-close" onClick={() => setOpen(false)} aria-label="Close">
             <CloseIcon />
