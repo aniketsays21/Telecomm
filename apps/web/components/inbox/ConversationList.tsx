@@ -7,11 +7,11 @@ import type { ConversationSummary } from '@/lib/api';
 function timeAgo(isoStr: string) {
   const diff = Date.now() - new Date(isoStr).getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m`;
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
+  if (hrs < 24) return `${hrs}h`;
+  return `${Math.floor(hrs / 24)}d`;
 }
 
 function slaStatus(slaDueAt: string | null): 'breached' | 'warning' | null {
@@ -32,90 +32,88 @@ export function ConversationList({ conversations, hasMore }: Props) {
 
   if (conversations.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full text-center p-8">
-        <span className="text-4xl mb-3">🎉</span>
-        <p className="text-sm font-medium text-gray-700">All caught up!</p>
-        <p className="text-xs text-gray-400 mt-1">No open conversations.</p>
+      <div className="flex flex-col items-center justify-center h-full text-center px-8 py-16">
+        <p className="font-display text-2xl italic mb-1" style={{ color: 'var(--ink)' }}>
+          Nothing waiting.
+        </p>
+        <p className="text-xs" style={{ color: 'var(--ash)' }}>
+          You&apos;re fully caught up on this view.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="divide-y divide-gray-100 overflow-y-auto h-full">
-      {conversations.map(conv => {
+    <ul className="overflow-y-auto h-full" style={{ background: 'var(--paper)' }}>
+      {conversations.map((conv, i) => {
         const isActive = pathname.endsWith(conv.id);
         const isEscalated = !conv.aiHandled && !!conv.escalatedAt;
         const sla = slaStatus(conv.slaDueAt);
+        const displayName = conv.contact.name ?? conv.contact.email ?? 'Unknown';
 
         return (
-          <Link
-            key={conv.id}
-            href={`/inbox/${conv.id}`}
-            className={`block px-4 py-3.5 hover:bg-gray-50 transition-colors ${isActive ? 'bg-indigo-50 border-l-2 border-indigo-500' : ''}`}
-          >
-            <div className="flex items-start gap-3">
-              {/* Avatar */}
-              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-semibold text-gray-600 shrink-0">
-                {(conv.contact.name ?? conv.contact.email ?? '?')[0].toUpperCase()}
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-0.5">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {conv.contact.name ?? conv.contact.email ?? 'Unknown'}
-                  </p>
-                  <span className="text-xs text-gray-400 shrink-0 ml-2">{timeAgo(conv.lastMessageAt)}</span>
-                </div>
-
-                <p className="text-xs text-gray-500 truncate">
-                  {conv.subject ?? (conv.channel === 'chat' ? 'Chat session' : 'Email')}
+          <li key={conv.id}>
+            <Link
+              href={`/inbox/${conv.id}`}
+              className="block px-5 py-4 transition-colors"
+              style={{
+                background: isActive ? 'var(--bone)' : 'transparent',
+                borderTop: i === 0 ? 'none' : '1px solid var(--rule-2)',
+                borderLeft: isActive ? '2px solid var(--forest)' : '2px solid transparent',
+              }}
+              onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = 'var(--rule-2)'; }}
+              onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <div className="flex items-baseline justify-between gap-3 mb-1">
+                <p
+                  className="text-sm truncate"
+                  style={{
+                    color: 'var(--ink)',
+                    fontWeight: isActive ? 600 : 500,
+                  }}
+                >
+                  {displayName}
                 </p>
-
-                <div className="flex items-center gap-1.5 mt-1.5">
-                  {/* Channel chip */}
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                    conv.channel === 'chat' ? 'bg-blue-50 text-blue-600' : 'bg-yellow-50 text-yellow-700'
-                  }`}>
-                    {conv.channel === 'chat' ? '💬 Chat' : '✉ Email'}
-                  </span>
-
-                  {/* Escalated badge */}
-                  {isEscalated && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">
-                      Needs agent
-                    </span>
-                  )}
-
-                  {/* AI handled */}
-                  {conv.aiHandled && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">
-                      AI resolved
-                    </span>
-                  )}
-
-                  {/* SLA badge */}
-                  {sla === 'breached' && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
-                      SLA breached
-                    </span>
-                  )}
-                  {sla === 'warning' && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
-                      SLA at risk
-                    </span>
-                  )}
-                </div>
+                <span className="font-numeric text-[11px] shrink-0" style={{ color: 'var(--dust)' }}>
+                  {timeAgo(conv.lastMessageAt)}
+                </span>
               </div>
-            </div>
-          </Link>
+
+              <p className="text-xs truncate mb-2" style={{ color: 'var(--ash)' }}>
+                {conv.subject ?? (conv.channel === 'chat' ? 'Chat session' : 'Email')}
+              </p>
+
+              <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--ash)' }}>
+                <span style={{ color: 'var(--dust)' }}>
+                  {conv.channel === 'chat' ? 'Chat' : 'Email'}
+                </span>
+
+                {isEscalated && (
+                  <span className="status-dot" style={{ color: 'var(--brick)' }}>Needs agent</span>
+                )}
+                {conv.aiHandled && !isEscalated && (
+                  <span className="status-dot" style={{ color: 'var(--forest)' }}>AI handled</span>
+                )}
+                {sla === 'breached' && (
+                  <span className="status-dot font-numeric" style={{ color: 'var(--brick)' }}>SLA over</span>
+                )}
+                {sla === 'warning' && (
+                  <span className="status-dot font-numeric" style={{ color: 'var(--ochre)' }}>SLA close</span>
+                )}
+              </div>
+            </Link>
+          </li>
         );
       })}
 
       {hasMore && (
-        <div className="px-4 py-3 text-center">
-          <span className="text-xs text-gray-400">Scroll for more…</span>
-        </div>
+        <li
+          className="px-5 py-3 text-center text-[11px]"
+          style={{ color: 'var(--dust)', borderTop: '1px solid var(--rule-2)' }}
+        >
+          Scroll for more
+        </li>
       )}
-    </div>
+    </ul>
   );
 }

@@ -40,17 +40,24 @@ export default async function ConversationPage({ params, searchParams }: Props) 
     <div className="flex h-full">
       <RealtimeInbox token={session.token} />
       {/* Conversation list panel */}
-      <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
-        <div className="px-4 py-4 border-b border-gray-100">
-          <h1 className="text-base font-semibold text-gray-900">Inbox</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{conversations.length} conversation{conversations.length !== 1 ? 's' : ''}</p>
+      <div
+        className="w-[22rem] flex flex-col"
+        style={{ background: 'var(--paper)', borderRight: '1px solid var(--rule)' }}
+      >
+        <div className="px-5 pt-6 pb-4" style={{ borderBottom: '1px solid var(--rule)' }}>
+          <h1 className="font-display text-3xl italic leading-none" style={{ color: 'var(--ink)' }}>
+            Inbox
+          </h1>
+          <p className="text-xs mt-2 font-numeric" style={{ color: 'var(--ash)' }}>
+            {conversations.length} conversation{conversations.length !== 1 ? 's' : ''}
+          </p>
         </div>
         <InboxFilters />
         <ConversationList conversations={conversations} hasMore={hasMore} />
       </div>
 
       {/* Thread panel */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-white">
+      <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'var(--bone)' }}>
         <ConversationHeader conversation={conversation} contact={contact} agents={agents} />
 
         <div className="flex-1 overflow-hidden">

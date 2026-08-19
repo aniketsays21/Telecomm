@@ -4,15 +4,15 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useCallback, useState, useTransition } from 'react';
 
 const STATUSES = [
-  { value: 'open', label: 'Open' },
+  { value: 'open',     label: 'Open' },
   { value: 'resolved', label: 'Resolved' },
-  { value: 'snoozed', label: 'Snoozed' },
-  { value: 'all', label: 'All' },
+  { value: 'snoozed',  label: 'Snoozed' },
+  { value: 'all',      label: 'All' },
 ];
 
 const CHANNELS = [
-  { value: '', label: 'All channels' },
-  { value: 'chat', label: 'Chat' },
+  { value: '',      label: 'All' },
+  { value: 'chat',  label: 'Chat' },
   { value: 'email', label: 'Email' },
 ];
 
@@ -53,69 +53,74 @@ export function InboxFilters() {
     if (value) next.set(key, value);
     else next.delete(key);
     startTransition(() => {
-      // Navigate to base inbox (not a specific conversation) when filters change
       const basePath = pathname.startsWith('/inbox/') ? '/inbox' : pathname;
       router.push(`${basePath}?${next.toString()}`);
     });
   }, [params, pathname, router]);
 
   return (
-    <div className="px-3 py-2 border-b border-gray-100 space-y-2">
-      {/* Export */}
-      <div className="flex justify-end">
+    <div className="px-5 py-4 space-y-3" style={{ borderBottom: '1px solid var(--rule)' }}>
+      <input
+        type="search"
+        placeholder="Search conversations…"
+        defaultValue={q}
+        className="input-flat"
+        onChange={(e) => update('q', e.target.value)}
+      />
+
+      {/* Status — the primary filter, styled as tabs with hairline underline */}
+      <div className="flex items-center gap-4" style={{ borderBottom: '1px solid var(--rule-2)' }}>
+        {STATUSES.map((s) => {
+          const active = status === s.value;
+          return (
+            <button
+              key={s.value}
+              onClick={() => update('status', s.value)}
+              className="pb-2 text-xs transition-colors -mb-px"
+              style={{
+                color: active ? 'var(--ink)' : 'var(--ash)',
+                borderBottom: active ? '1px solid var(--ink)' : '1px solid transparent',
+                fontWeight: active ? 500 : 400,
+              }}
+            >
+              {s.label}
+            </button>
+          );
+        })}
         <button
           onClick={handleExport}
           disabled={exporting}
-          className="text-[10px] px-2 py-1 rounded-md font-medium text-gray-500 hover:bg-gray-100 disabled:opacity-40 flex items-center gap-1"
+          className="ml-auto pb-2 text-[11px] transition-colors"
+          style={{ color: 'var(--dust)' }}
           title="Export current view as CSV"
         >
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
           {exporting ? 'Exporting…' : 'Export CSV'}
         </button>
       </div>
-      {/* Search */}
-      <input
-        type="search"
-        placeholder="Search by name or email…"
-        defaultValue={q}
-        className="w-full text-xs px-3 py-1.5 border border-gray-200 rounded-lg outline-none focus:border-indigo-400 bg-gray-50"
-        onChange={e => update('q', e.target.value)}
-      />
 
-      {/* Status tabs */}
-      <div className="flex gap-1">
-        {STATUSES.map(s => (
-          <button
-            key={s.value}
-            onClick={() => update('status', s.value)}
-            className={`text-[10px] px-2 py-1 rounded-md font-medium transition-colors ${
-              status === s.value
-                ? 'bg-indigo-100 text-indigo-700'
-                : 'text-gray-500 hover:bg-gray-100'
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Channel filter */}
-      <div className="flex gap-1">
-        {CHANNELS.map(c => (
-          <button
-            key={c.value}
-            onClick={() => update('channel', c.value)}
-            className={`text-[10px] px-2 py-1 rounded-md font-medium transition-colors ${
-              channel === c.value
-                ? 'bg-gray-200 text-gray-800'
-                : 'text-gray-400 hover:bg-gray-100'
-            }`}
-          >
-            {c.label}
-          </button>
-        ))}
+      {/* Channel — subordinate, styled as inline prose choices */}
+      <div className="flex items-center gap-2 text-[11px]" style={{ color: 'var(--ash)' }}>
+        <span className="eyebrow" style={{ color: 'var(--dust)' }}>Channel</span>
+        {CHANNELS.map((c, i) => {
+          const active = channel === c.value;
+          return (
+            <span key={c.value}>
+              {i > 0 && <span style={{ color: 'var(--rule)' }} className="mx-1.5">·</span>}
+              <button
+                onClick={() => update('channel', c.value)}
+                className="transition-colors"
+                style={{
+                  color: active ? 'var(--forest)' : 'var(--ash)',
+                  fontWeight: active ? 500 : 400,
+                  textDecoration: active ? 'underline' : 'none',
+                  textUnderlineOffset: '3px',
+                }}
+              >
+                {c.label}
+              </button>
+            </span>
+          );
+        })}
       </div>
     </div>
   );

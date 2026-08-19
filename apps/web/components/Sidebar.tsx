@@ -14,62 +14,126 @@ const agentNav = [
   { href: '/inbox', label: 'Inbox' },
 ];
 
-const adminNav = [
-  { href: '/inbox', label: 'Inbox' },
-  { href: '/analytics', label: 'Analytics' },
-  { href: '/settings', label: 'Settings' },
-  { href: '/settings/team', label: 'Team' },
-  { href: '/settings/knowledge', label: 'Knowledge Base' },
-  { href: '/settings/widget', label: 'Widget' },
-  { href: '/settings/email', label: 'Email' },
-  { href: '/settings/gmail', label: 'Gmail' },
-  { href: '/settings/canned', label: 'Canned Responses' },
-  { href: '/settings/sla', label: 'SLA' },
-  { href: '/settings/billing', label: 'Billing' },
+// Grouped so the sidebar reads like a table of contents, not a wall of items.
+const adminNavGroups: Array<{ eyebrow: string; items: { href: string; label: string }[] }> = [
+  {
+    eyebrow: 'Work',
+    items: [
+      { href: '/inbox',     label: 'Inbox' },
+      { href: '/analytics', label: 'Analytics' },
+    ],
+  },
+  {
+    eyebrow: 'Channels',
+    items: [
+      { href: '/settings/widget',  label: 'Chat widget' },
+      { href: '/settings/email',   label: 'Email' },
+      { href: '/settings/gmail',   label: 'Gmail' },
+    ],
+  },
+  {
+    eyebrow: 'Configure',
+    items: [
+      { href: '/settings/team',      label: 'Team' },
+      { href: '/settings/knowledge', label: 'Knowledge' },
+      { href: '/settings/canned',    label: 'Canned replies' },
+      { href: '/settings/sla',       label: 'SLA' },
+      { href: '/settings/billing',   label: 'Billing' },
+    ],
+  },
 ];
 
 export function Sidebar({ role, name, email }: Props) {
   const pathname = usePathname();
-  const nav = role === 'admin' ? adminNav : agentNav;
 
   return (
-    <aside className="w-56 bg-white border-r border-gray-200 flex flex-col shrink-0">
-      <div className="px-4 py-5 border-b border-gray-100">
-        <span className="font-bold text-gray-900 text-lg">Telecomm</span>
-      </div>
-      <nav className="flex-1 p-3 space-y-0.5">
-        {nav.map(({ href, label }) => {
-          const active = pathname === href || pathname.startsWith(href + '/');
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                active
-                  ? 'bg-indigo-50 text-indigo-700'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              }`}
-            >
-              {label}
-            </Link>
-          );
-        })}
-      </nav>
-      <div className="p-3 border-t border-gray-100">
-        <div className="px-3 py-2">
-          <p className="text-sm font-medium text-gray-900 truncate">{name}</p>
-          <p className="text-xs text-gray-500 truncate">{email}</p>
-          <p className="text-xs text-indigo-600 mt-0.5 capitalize">{role}</p>
+    <aside
+      className="w-60 shrink-0 flex flex-col border-r"
+      style={{ background: 'var(--paper)', borderColor: 'var(--rule)' }}
+    >
+      {/* Wordmark — serif italic for character, small dot for the "T" opener */}
+      <div className="px-6 pt-7 pb-5">
+        <div className="flex items-baseline gap-1.5">
+          <span className="font-display text-2xl italic" style={{ color: 'var(--ink)' }}>
+            Telecomm
+          </span>
+          <span
+            className="w-1.5 h-1.5 rounded-full"
+            style={{ background: 'var(--forest)' }}
+            aria-hidden="true"
+          />
         </div>
-        <form action={logoutAction}>
+        <p className="eyebrow mt-1" style={{ color: 'var(--dust)' }}>Support · v1</p>
+      </div>
+
+      <nav className="flex-1 px-4 pb-4 overflow-y-auto">
+        {role === 'admin' ? (
+          adminNavGroups.map((group, i) => (
+            <div key={group.eyebrow} className={i === 0 ? '' : 'mt-6'}>
+              <p className="eyebrow px-2 mb-2">{group.eyebrow}</p>
+              <ul className="space-y-px">
+                {group.items.map((item) => (
+                  <NavItem key={item.href} href={item.href} label={item.label} pathname={pathname} />
+                ))}
+              </ul>
+            </div>
+          ))
+        ) : (
+          <ul className="space-y-px mt-2">
+            {agentNav.map((item) => (
+              <NavItem key={item.href} href={item.href} label={item.label} pathname={pathname} />
+            ))}
+          </ul>
+        )}
+      </nav>
+
+      {/* User card — separated by a hairline, not a shaded block */}
+      <div className="px-4 py-4 border-t" style={{ borderColor: 'var(--rule)' }}>
+        <div className="px-2">
+          <p className="text-sm font-medium truncate" style={{ color: 'var(--ink)' }}>{name}</p>
+          <p className="text-xs truncate mt-0.5" style={{ color: 'var(--ash)' }}>{email}</p>
+          <p className="eyebrow mt-1.5" style={{ color: 'var(--forest)' }}>{role}</p>
+        </div>
+        <form action={logoutAction} className="mt-3">
           <button
             type="submit"
-            className="w-full mt-1 text-left px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-lg transition-colors"
+            className="w-full text-left px-2 py-1.5 text-sm rounded transition-colors"
+            style={{ color: 'var(--ash)' }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--brick)')}
+            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ash)')}
           >
-            Sign out
+            Sign out ↗
           </button>
         </form>
       </div>
     </aside>
+  );
+}
+
+function NavItem({ href, label, pathname }: { href: string; label: string; pathname: string }) {
+  const active = pathname === href || pathname.startsWith(href + '/');
+  return (
+    <li>
+      <Link
+        href={href}
+        className="group flex items-center gap-2.5 px-2 py-1.5 text-sm transition-colors rounded"
+        style={{
+          color: active ? 'var(--ink)' : 'var(--ash)',
+          background: active ? 'var(--forest-soft)' : 'transparent',
+          fontWeight: active ? 500 : 400,
+        }}
+      >
+        {/* Small marker replaces the pill background */}
+        <span
+          aria-hidden="true"
+          className="w-1 h-1 rounded-full transition-all"
+          style={{
+            background: active ? 'var(--forest)' : 'transparent',
+            outline: active ? 'none' : '1px solid var(--rule)',
+          }}
+        />
+        {label}
+      </Link>
+    </li>
   );
 }

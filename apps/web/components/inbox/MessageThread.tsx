@@ -19,7 +19,14 @@ function formatDate(iso: string) {
   const yesterday = new Date(today);
   yesterday.setDate(today.getDate() - 1);
   if (d.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function authorLabel(t: Message['authorType'], contact: Contact): string {
+  if (t === 'contact') return contact.name || contact.email || 'Visitor';
+  if (t === 'ai') return 'AI assistant';
+  if (t === 'agent') return 'You';
+  return 'System';
 }
 
 export function MessageThread({ messages, contact }: Props) {
@@ -31,8 +38,8 @@ export function MessageThread({ messages, contact }: Props) {
 
   if (messages.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-        No messages yet.
+      <div className="flex items-center justify-center h-full">
+        <p className="text-sm" style={{ color: 'var(--dust)' }}>No messages yet.</p>
       </div>
     );
   }
@@ -40,76 +47,106 @@ export function MessageThread({ messages, contact }: Props) {
   let lastDate = '';
 
   return (
-    <div className="flex flex-col gap-3 p-5 overflow-y-auto h-full">
-      {messages.map(msg => {
-        const dateLabel = formatDate(msg.createdAt);
-        const showDate = dateLabel !== lastDate;
-        if (showDate) lastDate = dateLabel;
+    <div className="overflow-y-auto h-full px-8 py-6" style={{ background: 'var(--bone)' }}>
+      <div className="max-w-2xl mx-auto space-y-6">
+        {messages.map((msg) => {
+          const dateLabel = formatDate(msg.createdAt);
+          const showDate = dateLabel !== lastDate;
+          if (showDate) lastDate = dateLabel;
 
-        const isContact = msg.authorType === 'contact';
-        const isAI = msg.authorType === 'ai';
-        const isAgent = msg.authorType === 'agent';
-        const isSystem = msg.authorType === 'system';
+          if (msg.authorType === 'system') {
+            return (
+              <p
+                key={msg.id}
+                className="text-center text-[11px] italic"
+                style={{ color: 'var(--dust)' }}
+              >
+                {msg.body}
+              </p>
+            );
+          }
 
-        return (
-          <div key={msg.id}>
-            {showDate && (
-              <div className="flex items-center gap-3 my-2">
-                <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-xs text-gray-400">{dateLabel}</span>
-                <div className="flex-1 h-px bg-gray-100" />
-              </div>
-            )}
+          const isContact = msg.authorType === 'contact';
+          const isAI = msg.authorType === 'ai';
+          const isAgent = msg.authorType === 'agent';
+          const label = authorLabel(msg.authorType, contact);
 
-            {isSystem ? (
-              <p className="text-xs text-center text-gray-400 my-1">{msg.body}</p>
-            ) : (
-              <div className={`flex gap-2.5 ${isContact ? '' : 'flex-row-reverse'}`}>
-                {/* Avatar */}
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                  isContact ? 'bg-gray-200 text-gray-600' :
-                  isAI ? 'bg-indigo-100 text-indigo-600' :
-                  'bg-emerald-100 text-emerald-700'
-                }`}>
-                  {isContact ? (contact.name ?? '?')[0].toUpperCase() :
-                   isAI ? '🤖' : '👤'}
+          // Uniform layout: everyone gets an eyebrow (author · time), then the
+          // message body. No colored bubbles — the alignment + eyebrow color
+          // is enough signal, and it reads like a magazine transcript.
+          return (
+            <div key={msg.id}>
+              {showDate && (
+                <div className="flex items-center gap-4 my-8">
+                  <div className="flex-1 h-px" style={{ background: 'var(--rule)' }} />
+                  <span
+                    className="font-numeric text-[10px] uppercase tracking-widest"
+                    style={{ color: 'var(--dust)' }}
+                  >
+                    {dateLabel}
+                  </span>
+                  <div className="flex-1 h-px" style={{ background: 'var(--rule)' }} />
                 </div>
+              )}
 
-                <div className={`max-w-[70%] ${isContact ? '' : 'items-end'} flex flex-col`}>
-                  {/* Bubble */}
-                  <div className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
-                    isContact
-                      ? 'bg-white border border-gray-200 text-gray-800 rounded-tl-sm'
-                      : isAI
-                      ? 'bg-indigo-50 text-indigo-900 border border-indigo-100 rounded-tr-sm'
-                      : 'bg-emerald-600 text-white rounded-tr-sm'
-                  } ${msg.isInternalNote ? 'opacity-70 border-dashed' : ''}`}>
-                    {msg.body}
-                  </div>
-
-                  {/* Meta row */}
-                  <div className={`flex items-center gap-2 mt-1 ${isContact ? '' : 'flex-row-reverse'}`}>
-                    <span className="text-[10px] text-gray-400">{formatTime(msg.createdAt)}</span>
-                    {isAI && msg.aiConfidence && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                        parseFloat(msg.aiConfidence) >= 0.8 ? 'bg-green-50 text-green-600' :
-                        parseFloat(msg.aiConfidence) >= 0.6 ? 'bg-yellow-50 text-yellow-600' :
-                        'bg-red-50 text-red-600'
-                      }`}>
-                        {Math.round(parseFloat(msg.aiConfidence) * 100)}% confident
+              <article className={isContact ? '' : 'text-right'}>
+                <div
+                  className="flex items-baseline gap-2 mb-1.5 text-[11px]"
+                  style={{
+                    color: 'var(--ash)',
+                    justifyContent: isContact ? 'flex-start' : 'flex-end',
+                  }}
+                >
+                  <span
+                    className="status-dot font-medium"
+                    style={{
+                      color: isContact ? 'var(--sky)' : isAI ? 'var(--forest)' : 'var(--ink)',
+                    }}
+                  >
+                    {label}
+                  </span>
+                  <span style={{ color: 'var(--rule)' }}>·</span>
+                  <span className="font-numeric" style={{ color: 'var(--dust)' }}>
+                    {formatTime(msg.createdAt)}
+                  </span>
+                  {isAI && msg.aiConfidence && (
+                    <>
+                      <span style={{ color: 'var(--rule)' }}>·</span>
+                      <span className="font-numeric" style={{ color: 'var(--dust)' }}>
+                        {Math.round(parseFloat(msg.aiConfidence) * 100)}% conf
                       </span>
-                    )}
-                    {msg.isInternalNote && (
-                      <span className="text-[10px] text-gray-400 italic">internal note</span>
-                    )}
-                  </div>
+                    </>
+                  )}
+                  {msg.isInternalNote && (
+                    <>
+                      <span style={{ color: 'var(--rule)' }}>·</span>
+                      <span className="italic" style={{ color: 'var(--ochre)' }}>internal</span>
+                    </>
+                  )}
                 </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
-      <div ref={bottomRef} />
+
+                <div
+                  className="inline-block max-w-full text-sm leading-relaxed whitespace-pre-wrap text-left"
+                  style={{
+                    color: 'var(--ink)',
+                    background: msg.isInternalNote ? 'var(--ochre-soft)' : 'var(--paper)',
+                    border: '1px solid ' + (msg.isInternalNote ? '#E8D9AE' : 'var(--rule-2)'),
+                    borderLeft: isAgent && !msg.isInternalNote ? '2px solid var(--ink)'
+                      : isAI ? '2px solid var(--forest)'
+                      : isContact ? '2px solid var(--sky)'
+                      : '1px solid var(--rule-2)',
+                    padding: '12px 16px',
+                    borderRadius: '2px',
+                  }}
+                >
+                  {msg.body}
+                </div>
+              </article>
+            </div>
+          );
+        })}
+        <div ref={bottomRef} />
+      </div>
     </div>
   );
 }

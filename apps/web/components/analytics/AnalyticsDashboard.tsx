@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import type { AnalyticsData } from '@/lib/api';
 
-function fmt(ms: number | null) {
+function fmtMs(ms: number | null) {
   if (ms === null) return '—';
   const s = ms / 1000;
   if (s < 60) return `${Math.round(s)}s`;
@@ -12,30 +12,60 @@ function fmt(ms: number | null) {
   return `${Math.round(m / 60)}h ${Math.round(m % 60)}m`;
 }
 
-function StatCard({ label, value, sub, color = 'text-gray-900' }: {
-  label: string; value: string | number; sub?: string; color?: string;
+// A numeric readout card — big serif number, small caption, hairline top rule.
+function Stat({
+  label,
+  value,
+  caption,
+  emphasis,
+}: {
+  label: string;
+  value: string | number;
+  caption?: string;
+  emphasis?: 'default' | 'forest' | 'brick';
 }) {
+  const color =
+    emphasis === 'brick' ? 'var(--brick)' :
+    emphasis === 'forest' ? 'var(--forest)' :
+    'var(--ink)';
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-5">
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className={`text-3xl font-bold mt-1 ${color}`}>{value}</p>
-      {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+    <div className="py-5" style={{ borderTop: '1px solid var(--rule)' }}>
+      <p className="eyebrow">{label}</p>
+      <p
+        className="font-display leading-none mt-3"
+        style={{ color, fontSize: '2.75rem' }}
+      >
+        {value}
+      </p>
+      {caption && (
+        <p className="text-xs mt-2 font-numeric" style={{ color: 'var(--dust)' }}>
+          {caption}
+        </p>
+      )}
     </div>
   );
 }
 
 function BarChart({ data }: { data: AnalyticsData['daily'] }) {
-  if (!data.length) return <p className="text-sm text-gray-400 text-center py-8">No data yet.</p>;
+  if (!data.length) {
+    return (
+      <p className="text-sm py-12 text-center italic" style={{ color: 'var(--dust)' }}>
+        No data in this period.
+      </p>
+    );
+  }
 
-  const maxConv = Math.max(...data.map(d => d.conversations), 1);
-  const H = 120;
-  const W = 600;
-  const barW = Math.max(4, Math.floor((W / data.length) * 0.6));
+  const maxConv = Math.max(...data.map((d) => d.conversations), 1);
+  const H = 140;
+  const W = 640;
+  const barW = Math.max(4, Math.floor((W / data.length) * 0.55));
   const gap = W / data.length;
 
   return (
     <div className="overflow-x-auto">
-      <svg viewBox={`0 0 ${W} ${H + 30}`} className="w-full" style={{ minWidth: 320 }}>
+      <svg viewBox={`0 0 ${W} ${H + 34}`} className="w-full" style={{ minWidth: 320 }}>
+        {/* Baseline */}
+        <line x1="0" y1={H} x2={W} y2={H} stroke="var(--rule)" strokeWidth="1" />
         {data.map((d, i) => {
           const x = i * gap + gap / 2;
           const convH = (d.conversations / maxConv) * H;
@@ -43,31 +73,33 @@ function BarChart({ data }: { data: AnalyticsData['daily'] }) {
           const label = new Date(d.day).toLocaleDateString([], { month: 'short', day: 'numeric' });
           return (
             <g key={d.day}>
-              {/* Conversation bar */}
               <rect
                 x={x - barW / 2}
                 y={H - convH}
                 width={barW}
                 height={convH}
-                rx={2}
-                fill="#6366f1"
-                opacity={0.85}
+                fill="var(--ink)"
+                opacity={0.88}
               />
-              {/* Escalation bar (overlay) */}
               {d.escalations > 0 && (
                 <rect
                   x={x - barW / 2}
                   y={H - escH}
                   width={barW}
                   height={escH}
-                  rx={2}
-                  fill="#f43f5e"
-                  opacity={0.8}
+                  fill="var(--brick)"
+                  opacity={0.9}
                 />
               )}
-              {/* Day label — every nth label to avoid crowding */}
               {(data.length <= 14 || i % Math.ceil(data.length / 10) === 0) && (
-                <text x={x} y={H + 16} textAnchor="middle" fontSize={8} fill="#9ca3af">
+                <text
+                  x={x}
+                  y={H + 20}
+                  textAnchor="middle"
+                  fontSize={9}
+                  fill="var(--dust)"
+                  fontFamily="var(--font-mono)"
+                >
                   {label}
                 </text>
               )}
@@ -75,13 +107,9 @@ function BarChart({ data }: { data: AnalyticsData['daily'] }) {
           );
         })}
       </svg>
-      <div className="flex gap-4 justify-end mt-1">
-        <span className="flex items-center gap-1.5 text-xs text-gray-500">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-indigo-500" /> Conversations
-        </span>
-        <span className="flex items-center gap-1.5 text-xs text-gray-500">
-          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-rose-500" /> Escalations
-        </span>
+      <div className="flex gap-6 justify-end mt-3 text-[11px]" style={{ color: 'var(--ash)' }}>
+        <span className="status-dot" style={{ color: 'var(--ink)' }}>Conversations</span>
+        <span className="status-dot" style={{ color: 'var(--brick)' }}>Escalations</span>
       </div>
     </div>
   );
@@ -93,148 +121,169 @@ interface Props {
 
 export function AnalyticsDashboard({ initial }: Props) {
   const [data] = useState(initial);
-  // Defensive against an API deployment that pre-dates any of these fields —
-  // an out-of-sync API rollout should not blank the whole page.
   const summary = data.summary ?? ({} as AnalyticsData['summary']);
   const daily = data.daily ?? [];
   const topEscalationReasons = data.topEscalationReasons ?? [];
   const channelSplit = data.channelSplit ?? [];
   const topContacts = data.topContacts ?? [];
   const topTopics = data.topTopics ?? [];
-  const resolutionLabel = summary.avgResolutionMinutes == null
-    ? '—'
-    : summary.avgResolutionMinutes < 60
-      ? `${summary.avgResolutionMinutes}m`
-      : `${Math.round(summary.avgResolutionMinutes / 6) / 10}h`;
+
+  const resolutionLabel =
+    summary.avgResolutionMinutes == null ? '—'
+    : summary.avgResolutionMinutes < 60 ? `${summary.avgResolutionMinutes}m`
+    : `${Math.round(summary.avgResolutionMinutes / 6) / 10}h`;
 
   return (
-    <div className="space-y-8">
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Total Conversations" value={summary.total} sub={`Last ${data.period.days} days`} />
-        <StatCard label="Open Now" value={summary.openNow} color="text-indigo-600" />
-        <StatCard
-          label="AI Resolution Rate"
-          value={`${summary.aiResolutionRate}%`}
-          sub={`${summary.aiResolved} resolved by AI`}
-          color="text-emerald-600"
-        />
-        <StatCard
-          label="Escalation Rate"
-          value={`${summary.escalationRate}%`}
-          sub={`${summary.escalated} escalated`}
-          color={summary.escalationRate > 20 ? 'text-rose-600' : 'text-gray-900'}
-        />
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          label="Avg First Response"
-          value={fmt(summary.avgFirstResponseMs)}
-          sub="Agent replies only"
-        />
-        <StatCard
-          label="Avg Resolution Time"
-          value={resolutionLabel}
-          sub="Open → resolved"
-        />
-        <StatCard label="Agent Resolved" value={summary.agentResolved} />
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Channels</p>
-          {channelSplit.length === 0
-            ? <p className="text-sm text-gray-400">No data</p>
-            : channelSplit.map(c => (
-              <div key={c.channel} className="flex items-center justify-between text-sm mb-1">
-                <span className="text-gray-600 capitalize">{c.channel}</span>
-                <span className="font-semibold text-gray-900">{c.count}</span>
-              </div>
-            ))
-          }
+    <div className="space-y-14">
+      {/* Primary KPI row */}
+      <section>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8">
+          <Stat
+            label="Conversations"
+            value={summary.total ?? 0}
+            caption={`Last ${data.period?.days ?? 30} days`}
+          />
+          <Stat
+            label="Open now"
+            value={summary.openNow ?? 0}
+            emphasis="forest"
+          />
+          <Stat
+            label="AI resolution"
+            value={`${summary.aiResolutionRate ?? 0}%`}
+            caption={`${summary.aiResolved ?? 0} handled by AI`}
+            emphasis="forest"
+          />
+          <Stat
+            label="Escalation rate"
+            value={`${summary.escalationRate ?? 0}%`}
+            caption={`${summary.escalated ?? 0} escalated`}
+            emphasis={(summary.escalationRate ?? 0) > 20 ? 'brick' : 'default'}
+          />
         </div>
-      </div>
+      </section>
 
-      {/* Volume chart */}
-      <div className="bg-white rounded-xl border border-gray-200 p-6">
-        <h3 className="text-sm font-semibold text-gray-800 mb-4">Daily Volume</h3>
-        <BarChart data={daily} />
-      </div>
-
-      {/* Two-column: top topics + top contacts */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="text-sm font-semibold text-gray-800 mb-4">Top Problems Customers Face</h3>
-          {topTopics.length === 0 ? (
-            <p className="text-sm text-gray-400">No tagged conversations yet — the AI tags each thread with its topic (shipping / refund / sizing…) as it replies.</p>
-          ) : (
-            <div className="space-y-2">
-              {topTopics.map((t, i) => {
-                const max = topTopics[0].count;
-                return (
-                  <div key={i} className="flex items-center gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-0.5">
-                        <p className="text-sm text-gray-700 truncate capitalize">{t.topic.replace(/-/g, ' ')}</p>
-                        <span className="text-xs text-gray-500 ml-2 shrink-0">{t.count}</span>
-                      </div>
-                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                        <div className="h-full bg-indigo-400 rounded-full" style={{ width: `${(t.count / max) * 100}%` }} />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="text-sm font-semibold text-gray-800 mb-4">Top Contacts by Volume</h3>
-          {topContacts.length === 0 ? (
-            <p className="text-sm text-gray-400">No conversations yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {topContacts.map((c) => (
-                <div key={c.id} className="flex items-center justify-between text-sm py-1 border-b border-gray-50 last:border-none">
-                  <div className="min-w-0 flex-1 mr-3">
-                    <p className="text-gray-800 truncate">{c.label}</p>
-                    {c.email && c.email !== c.label && (
-                      <p className="text-xs text-gray-400 truncate">{c.email}</p>
-                    )}
-                  </div>
-                  <span className="font-semibold text-gray-900 shrink-0">{c.count}</span>
+      {/* Secondary readouts */}
+      <section>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8">
+          <Stat label="First response" value={fmtMs(summary.avgFirstResponseMs)} caption="Agent replies" />
+          <Stat label="Resolution time" value={resolutionLabel} caption="Open → resolved" />
+          <Stat label="Agent resolved" value={summary.agentResolved ?? 0} />
+          <div className="py-5" style={{ borderTop: '1px solid var(--rule)' }}>
+            <p className="eyebrow">Channels</p>
+            <div className="mt-3 space-y-2">
+              {channelSplit.length === 0 ? (
+                <p className="text-sm italic" style={{ color: 'var(--dust)' }}>—</p>
+              ) : channelSplit.map((c) => (
+                <div key={c.channel} className="flex items-baseline justify-between">
+                  <span className="text-sm capitalize" style={{ color: 'var(--ink)' }}>{c.channel}</span>
+                  <span className="font-numeric text-sm" style={{ color: 'var(--ash)' }}>{c.count}</span>
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Volume chart */}
+      <section>
+        <div className="flex items-baseline justify-between mb-4">
+          <h3 className="font-display text-2xl italic" style={{ color: 'var(--ink)' }}>Daily volume</h3>
+          <p className="text-xs" style={{ color: 'var(--ash)' }}>{daily.length} days</p>
+        </div>
+        <div className="p-6" style={{ background: 'var(--paper)', border: '1px solid var(--rule)' }}>
+          <BarChart data={daily} />
+        </div>
+      </section>
+
+      {/* Top problems + top contacts, editorial two-column */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-10">
+        <div>
+          <h3 className="font-display text-2xl italic mb-4" style={{ color: 'var(--ink)' }}>
+            Top problems
+          </h3>
+          {topTopics.length === 0 ? (
+            <p className="text-sm italic" style={{ color: 'var(--dust)' }}>
+              The AI tags each thread by topic; nothing tagged yet in this period.
+            </p>
+          ) : (
+            <ol className="space-y-3">
+              {topTopics.map((t, i) => {
+                const max = topTopics[0].count;
+                const pct = Math.round((t.count / max) * 100);
+                return (
+                  <li key={i}>
+                    <div className="flex items-baseline justify-between mb-1">
+                      <span className="text-sm capitalize" style={{ color: 'var(--ink)' }}>
+                        <span className="font-numeric text-xs mr-2" style={{ color: 'var(--dust)' }}>
+                          {String(i + 1).padStart(2, '0')}
+                        </span>
+                        {t.topic.replace(/-/g, ' ')}
+                      </span>
+                      <span className="font-numeric text-xs" style={{ color: 'var(--ash)' }}>{t.count}</span>
+                    </div>
+                    <div className="h-px w-full" style={{ background: 'var(--rule)' }}>
+                      <div className="h-px" style={{ background: 'var(--forest)', width: `${pct}%` }} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
           )}
         </div>
-      </div>
+
+        <div>
+          <h3 className="font-display text-2xl italic mb-4" style={{ color: 'var(--ink)' }}>
+            Top contacts
+          </h3>
+          {topContacts.length === 0 ? (
+            <p className="text-sm italic" style={{ color: 'var(--dust)' }}>No contacts yet.</p>
+          ) : (
+            <ul className="space-y-2.5">
+              {topContacts.map((c, i) => (
+                <li
+                  key={c.id}
+                  className="flex items-baseline justify-between py-2"
+                  style={{ borderBottom: i === topContacts.length - 1 ? 'none' : '1px solid var(--rule-2)' }}
+                >
+                  <div className="min-w-0 mr-3">
+                    <p className="text-sm truncate" style={{ color: 'var(--ink)' }}>{c.label}</p>
+                    {c.email && c.email !== c.label && (
+                      <p className="text-xs truncate" style={{ color: 'var(--dust)' }}>{c.email}</p>
+                    )}
+                  </div>
+                  <span className="font-numeric text-sm" style={{ color: 'var(--ash)' }}>{c.count}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </section>
 
       {/* Escalation reasons */}
       {topEscalationReasons.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h3 className="text-sm font-semibold text-gray-800 mb-4">Top Escalation Reasons</h3>
-          <div className="space-y-2">
+        <section>
+          <h3 className="font-display text-2xl italic mb-4" style={{ color: 'var(--ink)' }}>
+            Why the AI escalated
+          </h3>
+          <div className="space-y-3">
             {topEscalationReasons.map((r, i) => {
               const max = topEscalationReasons[0].count;
+              const pct = Math.round((r.count / max) * 100);
               return (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-0.5">
-                      <p className="text-sm text-gray-700 truncate">{r.reason}</p>
-                      <span className="text-xs text-gray-500 ml-2 shrink-0">{r.count}</span>
-                    </div>
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-rose-400 rounded-full"
-                        style={{ width: `${(r.count / max) * 100}%` }}
-                      />
-                    </div>
+                <div key={i}>
+                  <div className="flex items-baseline justify-between mb-1">
+                    <span className="text-sm truncate mr-3" style={{ color: 'var(--ink)' }}>{r.reason}</span>
+                    <span className="font-numeric text-xs" style={{ color: 'var(--ash)' }}>{r.count}</span>
+                  </div>
+                  <div className="h-px w-full" style={{ background: 'var(--rule)' }}>
+                    <div className="h-px" style={{ background: 'var(--brick)', width: `${pct}%` }} />
                   </div>
                 </div>
               );
             })}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );

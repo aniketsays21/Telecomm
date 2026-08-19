@@ -23,35 +23,44 @@ export default async function AnalyticsPage({ searchParams }: Props) {
   }
 
   return (
-    <div className="max-w-5xl mx-auto py-10 px-6">
-      <div className="flex items-center justify-between mb-8">
+    <div className="max-w-6xl mx-auto pt-12 pb-16 px-10">
+      <div className="flex items-end justify-between mb-12 pb-6" style={{ borderBottom: '1px solid var(--rule)' }}>
         <div>
-          <h1 className="text-xl font-semibold text-gray-900">Analytics</h1>
-          <p className="text-sm text-gray-500 mt-1">AI performance and conversation volume.</p>
+          <p className="eyebrow">Analytics · Last {days} days</p>
+          <h1 className="font-display text-5xl italic leading-none mt-3" style={{ color: 'var(--ink)' }}>
+            How things are going.
+          </h1>
         </div>
-        <div className="flex gap-2">
-          {[7, 30, 90].map(d => (
-            <a
-              key={d}
-              href={`/analytics?days=${d}`}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
-                days === d
-                  ? 'bg-indigo-600 text-white border-indigo-600'
-                  : 'border-gray-200 text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              {d}d
-            </a>
+        <div className="flex items-center gap-4 text-xs font-numeric" style={{ color: 'var(--ash)' }}>
+          {[7, 30, 90].map((d, i) => (
+            <span key={d} className="flex items-center gap-3">
+              {i > 0 && <span style={{ color: 'var(--rule)' }}>·</span>}
+              <a
+                href={`/analytics?days=${d}`}
+                className="transition-colors"
+                style={{
+                  color: days === d ? 'var(--ink)' : 'var(--ash)',
+                  fontWeight: days === d ? 500 : 400,
+                  textDecoration: days === d ? 'underline' : 'none',
+                  textUnderlineOffset: '4px',
+                }}
+              >
+                {d} days
+              </a>
+            </span>
           ))}
         </div>
       </div>
       {loadError && (
-        <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4">
-          <p className="text-sm font-medium text-rose-800">Couldn't load analytics</p>
-          <p className="text-xs text-rose-600 mt-1 break-all">{loadError}</p>
-          <p className="text-xs text-rose-500 mt-2">
-            Common causes: the API service was redeployed with a newer schema than the DB, or
-            the request timed out. Check the API service logs on Railway.
+        <div
+          className="mb-8 p-5"
+          style={{ background: 'var(--brick-soft)', border: '1px solid #E4C0B4' }}
+        >
+          <p className="eyebrow" style={{ color: 'var(--brick)' }}>Couldn&apos;t load analytics</p>
+          <p className="text-sm mt-2 break-all" style={{ color: 'var(--ink)' }}>{loadError}</p>
+          <p className="text-xs mt-2" style={{ color: 'var(--ash)' }}>
+            Common causes: the API service was redeployed with a newer schema than the DB,
+            or the request timed out. Check the API service logs on Railway.
           </p>
         </div>
       )}

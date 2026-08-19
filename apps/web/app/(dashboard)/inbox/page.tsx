@@ -21,22 +21,33 @@ export default async function InboxPage({ searchParams }: Props) {
   return (
     <div className="flex h-full">
       <RealtimeInbox token={session.token} />
-      {/* Conversation list panel */}
-      <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
-        <div className="px-4 py-4 border-b border-gray-100">
-          <h1 className="text-base font-semibold text-gray-900">Inbox</h1>
-          <p className="text-xs text-gray-400 mt-0.5">{conversations.length} conversation{conversations.length !== 1 ? 's' : ''}</p>
+
+      <div
+        className="w-[22rem] flex flex-col"
+        style={{ background: 'var(--paper)', borderRight: '1px solid var(--rule)' }}
+      >
+        <div className="px-5 pt-6 pb-4" style={{ borderBottom: '1px solid var(--rule)' }}>
+          <h1 className="font-display text-3xl italic leading-none" style={{ color: 'var(--ink)' }}>
+            Inbox
+          </h1>
+          <p className="text-xs mt-2 font-numeric" style={{ color: 'var(--ash)' }}>
+            {conversations.length} conversation{conversations.length !== 1 ? 's' : ''}
+          </p>
         </div>
         <InboxFilters />
         <ConversationList conversations={conversations} hasMore={hasMore} />
       </div>
 
-      {/* Empty state when no conversation selected */}
-      <div className="flex-1 flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="text-5xl mb-4">💬</div>
-          <h2 className="text-lg font-semibold text-gray-700 mb-1">Select a conversation</h2>
-          <p className="text-sm text-gray-400">Click on a conversation to view messages and reply.</p>
+      {/* Empty state — editorial "select something" prompt */}
+      <div className="flex-1 flex items-center justify-center" style={{ background: 'var(--bone)' }}>
+        <div className="text-center max-w-sm px-6">
+          <p className="eyebrow mb-4" style={{ color: 'var(--dust)' }}>Nothing selected</p>
+          <h2 className="font-display text-4xl italic leading-tight" style={{ color: 'var(--ink)' }}>
+            Pick a conversation to open the thread.
+          </h2>
+          <p className="text-sm mt-4" style={{ color: 'var(--ash)' }}>
+            Your inbox on the left is ordered by most recent message.
+          </p>
         </div>
       </div>
     </div>

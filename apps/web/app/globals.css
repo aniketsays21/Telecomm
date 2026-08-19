@@ -2,7 +2,134 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────
+   Quiet Editorial — design tokens.
+   Bone-paper background, ink typography, one deep-forest accent
+   that intentionally replaces the generic indigo everywhere.
+   All UI color decisions read from these vars, so the whole app
+   can be re-tuned by editing this file.
+   ───────────────────────────────────────────────────────────── */
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222.2 84% 4.9%;
+  /* Neutrals — warmed on purpose so nothing feels sterile. */
+  --bone:   #F6F3EC;      /* app background                             */
+  --paper:  #FDFBF6;      /* cards, panels, message bubbles             */
+  --ink:    #141311;      /* primary text                                */
+  --ash:    #6B655A;      /* muted text, secondary labels                */
+  --dust:   #A9A196;      /* tertiary — timestamps, hint text            */
+  --rule:   #E3DDD1;      /* hairline borders                            */
+  --rule-2: #EEE9DE;      /* softer divider inside cards                 */
+
+  /* Accents — hue-family stays low-saturation so headings can dominate. */
+  --forest:      #1F3A2E; /* primary accent (was indigo)                 */
+  --forest-soft: #E6EDE8; /* accent surface (was indigo-50)              */
+  --brick:       #A0341F; /* urgent / breached / danger                  */
+  --brick-soft:  #F3E2DC;
+  --ochre:       #A67B1F; /* warning, snoozed                            */
+  --ochre-soft:  #F1E9D2;
+  --sky:         #345574; /* neutral info (was blue chips)               */
+  --sky-soft:    #E1E7EE;
+
+  /* Typography shortcuts. */
+  --font-display: var(--font-serif), 'Iowan Old Style', Georgia, serif;
+  --font-body:    var(--font-sans), 'Helvetica Neue', Arial, sans-serif;
+  --font-numeric: var(--font-mono), 'SF Mono', 'JetBrains Mono', monospace;
 }
+
+html, body { background: var(--bone); color: var(--ink); }
+body { font-family: var(--font-body); font-feature-settings: 'ss01', 'cv11'; }
+
+/* Selection matches the accent so it looks intentional, not browser-default. */
+::selection { background: var(--forest); color: var(--paper); }
+
+/* Custom scrollbar — narrow, quiet, on-brand. */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--rule);
+  border-radius: 999px;
+  border: 2px solid var(--bone);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--dust); }
+
+/* ─────────────────────────────────────────────────────────────
+   Utility classes — used by many components so kept central.
+   ───────────────────────────────────────────────────────────── */
+
+.font-display  { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.02em; }
+.font-numeric  { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; }
+
+/* Uppercase micro-labels ("CONTACT", "CONVERSATION") — an editorial staple. */
+.eyebrow {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ash);
+}
+
+/* Text-based status "chips" — no pills, no colors. Just a leading dot and
+   the word. Reads as prose but signals state. */
+.status-dot::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  margin-right: 6px;
+  vertical-align: 1px;
+  background: currentColor;
+}
+
+/* Text link with a slow underline reveal — no accent-colored link soup. */
+.link-underline {
+  color: var(--ink);
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
+  background-position: 0 100%;
+  transition: color 0.15s;
+}
+.link-underline:hover { color: var(--forest); }
+
+/* Primary button — ink block, paper text. Confident, not shouty. */
+.btn-ink {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+.btn-ink:hover:not(:disabled) { background: #000; }
+.btn-ink:active:not(:disabled) { transform: translateY(1px); }
+.btn-ink:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Ghost / secondary button — hairline border on paper. */
+.btn-ghost {
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  padding: 7px 13px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s;
+}
+.btn-ghost:hover:not(:disabled) { background: var(--forest-soft); border-color: var(--forest); color: var(--forest); }
+.btn-ghost:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Input — flat, no radius smoothing, one hairline. */
+.input-flat {
+  width: 100%;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  color: var(--ink);
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 4px;
+  transition: border-color 0.15s;
+}
+.input-flat::placeholder { color: var(--dust); }
+.input-flat:focus { outline: none; border-color: var(--ink); }

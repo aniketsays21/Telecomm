@@ -18,85 +18,87 @@ export function ConversationHeader({ conversation, contact, agents = [] }: Props
   const [isPending, startTransition] = useTransition();
 
   function resolve() {
-    startTransition(async () => { await updateConversationAction(conversation.id, { status: 'resolved' }); router.refresh(); });
+    startTransition(async () => {
+      await updateConversationAction(conversation.id, { status: 'resolved' });
+      router.refresh();
+    });
   }
-
   function reopen() {
-    startTransition(async () => { await updateConversationAction(conversation.id, { status: 'open' }); router.refresh(); });
+    startTransition(async () => {
+      await updateConversationAction(conversation.id, { status: 'open' });
+      router.refresh();
+    });
   }
-
   function assign(agentId: string | null) {
-    startTransition(async () => { await updateConversationAction(conversation.id, { assigneeId: agentId }); router.refresh(); });
+    startTransition(async () => {
+      await updateConversationAction(conversation.id, { assigneeId: agentId });
+      router.refresh();
+    });
   }
 
   const isEscalated = !conversation.aiHandled && !!conversation.escalatedAt;
-  const assignedAgent = agents.find(a => a.id === conversation.assigneeId);
+  const displayName = contact.name ?? contact.email ?? 'Unknown visitor';
 
   return (
-    <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 bg-white">
-      <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-full bg-gray-200 flex items-center justify-center text-sm font-semibold text-gray-600">
-          {(contact.name ?? contact.email ?? '?')[0].toUpperCase()}
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-gray-900">
-            {contact.name ?? contact.email ?? 'Unknown visitor'}
-          </p>
-          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-            {contact.email && (
-              <span className="text-xs text-gray-400">{contact.email}</span>
-            )}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-              conversation.channel === 'chat'
-                ? 'bg-blue-50 text-blue-600'
-                : 'bg-yellow-50 text-yellow-700'
-            }`}>
-              {conversation.channel === 'chat' ? '💬 Chat' : '✉ Email'}
-            </span>
-            {isEscalated && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">
-                Needs agent
-              </span>
-            )}
-            {conversation.aiHandled && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">
-                AI resolved
-              </span>
-            )}
-          </div>
+    <div
+      className="flex items-center justify-between px-6 py-4"
+      style={{ background: 'var(--paper)', borderBottom: '1px solid var(--rule)' }}
+    >
+      <div className="min-w-0">
+        <h2 className="font-display text-xl leading-none mb-1.5" style={{ color: 'var(--ink)' }}>
+          {displayName}
+        </h2>
+        <div className="flex items-center gap-3 text-[11px]" style={{ color: 'var(--ash)' }}>
+          {contact.email && (
+            <span className="truncate">{contact.email}</span>
+          )}
+          <span style={{ color: 'var(--rule)' }}>·</span>
+          <span>{conversation.channel === 'chat' ? 'Chat' : 'Email'}</span>
+          {isEscalated && (
+            <>
+              <span style={{ color: 'var(--rule)' }}>·</span>
+              <span className="status-dot" style={{ color: 'var(--brick)' }}>Needs agent</span>
+            </>
+          )}
+          {conversation.aiHandled && !isEscalated && (
+            <>
+              <span style={{ color: 'var(--rule)' }}>·</span>
+              <span className="status-dot" style={{ color: 'var(--forest)' }}>AI handled</span>
+            </>
+          )}
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
-        {/* Assignee dropdown */}
+      <div className="flex items-center gap-2 shrink-0">
         {agents.length > 0 && (
           <select
             value={conversation.assigneeId ?? ''}
-            onChange={e => assign(e.target.value || null)}
+            onChange={(e) => assign(e.target.value || null)}
             disabled={isPending}
-            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 focus:outline-none focus:border-indigo-400 bg-white"
+            className="text-xs px-2.5 py-1.5 bg-transparent focus:outline-none appearance-none pr-6"
+            style={{
+              color: 'var(--ash)',
+              borderBottom: '1px solid var(--rule)',
+              // Custom caret so the select doesn't look like a form default
+              backgroundImage: 'linear-gradient(45deg, transparent 50%, var(--ash) 50%), linear-gradient(135deg, var(--ash) 50%, transparent 50%)',
+              backgroundPosition: 'calc(100% - 12px) 50%, calc(100% - 8px) 50%',
+              backgroundSize: '4px 4px, 4px 4px',
+              backgroundRepeat: 'no-repeat',
+            }}
           >
             <option value="">Unassigned</option>
-            {agents.map(a => (
+            {agents.map((a) => (
               <option key={a.id} value={a.id}>{a.name || a.email}</option>
             ))}
           </select>
         )}
 
         {conversation.status !== 'resolved' ? (
-          <button
-            onClick={resolve}
-            disabled={isPending}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {isPending ? '…' : 'Resolve ✓'}
+          <button onClick={resolve} disabled={isPending} className="btn-ink">
+            {isPending ? '…' : 'Resolve'}
           </button>
         ) : (
-          <button
-            onClick={reopen}
-            disabled={isPending}
-            className="px-3 py-1.5 text-xs font-medium text-gray-700 border border-gray-200 hover:bg-gray-50 rounded-lg transition-colors disabled:opacity-50"
-          >
+          <button onClick={reopen} disabled={isPending} className="btn-ghost">
             {isPending ? '…' : 'Reopen'}
           </button>
         )}
