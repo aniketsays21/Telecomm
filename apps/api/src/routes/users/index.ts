@@ -5,6 +5,7 @@ import { users } from '@telecomm/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { requireAdmin, requireAuth } from '../../middleware/auth.js';
 import { randomBytes } from 'crypto';
+import { webUrl } from '../../lib/urls.js';
 
 const inviteBody = z.object({
   email: z.string().email(),
@@ -60,7 +61,7 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
     }).returning({ id: users.id, email: users.email, name: users.name, role: users.role, inviteToken: users.inviteToken });
 
     // TODO: send invite email via Postmark when key is configured
-    const inviteLink = `${process.env.WEB_URL ?? 'http://localhost:3000'}/invite/${inviteToken}`;
+    const inviteLink = `${webUrl()}/invite/${inviteToken}`;
     return reply.code(201).send({ ...invited, inviteLink });
   });
 

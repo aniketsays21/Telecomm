@@ -7,6 +7,7 @@ import { requireAuth } from '../../middleware/auth.js';
 import { Queue } from 'bullmq';
 import { QUEUES } from '@telecomm/shared';
 import { redisConnection } from '../../lib/redis.js';
+import { apiUrl } from '../../lib/urls.js';
 
 const ingestQueue = new Queue(QUEUES.INGEST, { connection: redisConnection() });
 
@@ -64,7 +65,7 @@ export async function onboardingRoutes(app: FastifyInstance) {
       inboundConfigured: !!inboundAddress(),
       supportEmail: (ws.settings as any)?.supportEmail ?? null,
       smtpFromAddress: (ws.settings as any)?.smtpFromAddress ?? null,
-      widgetSnippet: widgetSnippet(ws.id, process.env.API_URL ?? 'http://localhost:4000'),
+      widgetSnippet: widgetSnippet(ws.id, apiUrl()),
       sources: wsSources,
     };
   });

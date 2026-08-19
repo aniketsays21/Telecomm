@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import nodemailer from 'nodemailer';
+import { publicApiUrl } from './urls.js';
 
 // SMTP credentials are PLATFORM-level and shared by every workspace: one relay,
 // one set of credentials, one sending infrastructure. What is per-workspace is
@@ -154,8 +155,7 @@ export async function sendCsatRequest(opts: {
   fromName?: string;
   messageId?: string;
 }) {
-  const apiUrl = (process.env.PUBLIC_API_URL ?? 'http://localhost:4000').replace(/\/$/, '');
-  const base = `${apiUrl}/csat/${opts.conversationId}/rate?rating=`;
+  const base = `${publicApiUrl()}/csat/${opts.conversationId}/rate?rating=`;
 
   const stars = [1, 2, 3, 4, 5];
   const labels = ['Poor', 'Fair', 'Good', 'Great', 'Excellent'];
