@@ -73,14 +73,21 @@ export const CSS = `
   }
   #tc-header h2 { font-size: 15px; font-weight: 700; line-height: 1.3; display: flex; align-items: center; gap: 8px; }
   #tc-header p { font-size: 11px; opacity: 0.85; margin-top: 2px; }
-  /* Live hand-off variant — solid forest tone so the customer sees the
-     switch from bot to human at a glance, and a pulsing dot beside the name. */
-  #tc-header.tc-header-live {
-    background: linear-gradient(135deg, #1F3A2E 0%, #2f5a48 100%);
+  /* "<agent> is talking" presence line — sits in the header subtitle, so it
+     never covers the customer's messages. A pulsing green dot signals a live
+     human is on the thread. */
+  #tc-header p.tc-agent-live {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 1;
+    font-weight: 600;
   }
   .tc-agent-dot {
+    display: inline-block;
     width: 8px;
     height: 8px;
+    flex-shrink: 0;
     background: #4ade80;
     border-radius: 50%;
     box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.7);

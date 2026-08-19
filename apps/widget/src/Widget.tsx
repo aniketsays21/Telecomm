@@ -128,6 +128,11 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
   // as an inline system message. Sticky per-agent so the same person doesn't
   // trigger repeat announcements every time they send another line.
   const announcedAgentsRef = useRef<Set<string>>(new Set());
+  // The human agent currently handling this thread, if any. Powers the small
+  // "<agent> is talking" line in the header subtitle — a compact presence cue,
+  // NOT the old full-width banner that covered the customer's messages. Once a
+  // real person joins we keep showing them for the rest of the session.
+  const [activeAgent, setActiveAgent] = useState<string | null>(null);
   // Proactive-trigger scheduling. Loaded once per session and de-duped in
   // localStorage so a returning visitor doesn't get the same nudge every
   // page they touch. Only fires if the widget is currently closed.
@@ -243,6 +248,7 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
         );
         if (cancelled || news.length === 0) return;
         let unseenReplies = 0;
+        let latestAgent: string | null = null;
         setMsgs(prev => {
           const additions: Msg[] = [];
           for (const m of news) {
@@ -267,6 +273,7 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
             // again on a later day only announces once.
             if (m.role === 'agent') {
               const name = m.agentName ?? 'A teammate';
+              latestAgent = name;
               if (!announcedAgentsRef.current.has(name)) {
                 announcedAgentsRef.current.add(name);
                 additions.push({
@@ -289,6 +296,9 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
           }
           return additions.length ? [...prev, ...additions] : prev;
         });
+        // A human replied this tick → surface "<agent> is talking" in the
+        // header subtitle. Sticky for the rest of the session.
+        if (latestAgent) setActiveAgent(latestAgent);
         // Rename for clarity — everything unseen goes to the badge, not just AI.
         const unseenBotArrivals = unseenReplies;
         // Only badge messages the customer hasn't seen yet — if the panel is
@@ -382,14 +392,20 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
 
       {/* Chat window */}
       <div id="tc-window" class={open ? '' : 'tc-hidden'} role="dialog" aria-label="Support chat">
-        {/* Header — stable copy. Handoff signal moves into the message thread
-             itself (a small "Aniket is joining in ~2 mins" bot line, plus the
-             agent name above their bubble) so the header never covers the
-             customer's most recent message. */}
+        {/* Header — stays a fixed height so it never covers messages. When a
+             human agent is on the thread, the SUBTITLE swaps to "<agent> is
+             talking" with a live dot; the title stays "Support Chat". */}
         <div id="tc-header">
           <div>
             <h2>Support Chat</h2>
-            <p>We typically reply within a few minutes</p>
+            {activeAgent ? (
+              <p class="tc-agent-live">
+                <span class="tc-agent-dot" aria-hidden="true" />
+                {activeAgent} is talking
+              </p>
+            ) : (
+              <p>We typically reply within a few minutes</p>
+            )}
           </div>
           <button class="tc-close" onClick={() => setOpen(false)} aria-label="Close">
             <CloseIcon />
