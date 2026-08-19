@@ -4,7 +4,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { db } from '@telecomm/db';
 import { gmailAccounts, gmailRoutingRules, users } from '@telecomm/db/schema';
 import { requireAdmin, requireAuth } from '../../middleware/auth.js';
-import { buildAuthUrl, exchangeCode, signState, verifyState, GMAIL_SCOPE } from '../../lib/gmail-oauth.js';
+import { buildAuthUrl, exchangeCode, signState, verifyState, GMAIL_SCOPE, redirectUri } from '../../lib/gmail-oauth.js';
 import { encrypt } from '../../lib/gmail-crypto.js';
 import { getProfile } from '../../lib/gmail-client.js';
 import { webUrl } from '../../lib/urls.js';
@@ -35,16 +35,26 @@ export const gmailRoutes: FastifyPluginAsync = async (app) => {
       .from(gmailAccounts)
       .where(eq(gmailAccounts.workspaceId, session.workspaceId))
       .limit(1);
-    return { connected: !!account, account: account ?? null };
+    // Return the redirect URI too, so the UI can show admins the exact URL
+    // to register in Google Cloud Console — the #1 cause of failed connects
+    // is a mismatched or missing redirect URI.
+    return { connected: !!account, account: account ?? null, redirectUri: redirectUri() };
   });
 
   // ---- OAuth start --------------------------------------------------------
   app.get('/gmail/oauth/start', async (request, reply) => {
     const session = requireAdmin(request, reply);
     if (!session) return;
-    const state = await signState({ workspaceId: session.workspaceId, userId: session.userId });
-    const url = buildAuthUrl(state);
-    return { url };
+    // Guard early: without env vars set, the auth URL builds but Google
+    // returns redirect_uri_mismatch / invalid_client. Say so plainly instead.
+    try {
+      const state = await signState({ workspaceId: session.workspaceId, userId: session.userId });
+      const url = buildAuthUrl(state);
+      return { url };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return reply.code(400).send({ error: message });
+    }
   });
 
   // ---- OAuth callback -----------------------------------------------------

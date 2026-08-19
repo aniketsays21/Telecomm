@@ -1,13 +1,22 @@
 import type { FastifyInstance } from 'fastify';
-import { eq, and, gte, lt, sql, count, isNotNull } from 'drizzle-orm';
+import { eq, and, gte, sql, count } from 'drizzle-orm';
 import { db } from '@telecomm/db';
-import { conversations, contacts } from '@telecomm/db/schema';
+import { conversations } from '@telecomm/db/schema';
 import { requireAuth } from '../../middleware/auth.js';
 
-function startOfDay(date: Date) {
-  const d = new Date(date);
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
+/**
+ * Wrap a query so one broken piece of the dashboard doesn't 500 the whole
+ * endpoint. Whatever failed gets logged with a label so the API logs point
+ * straight at the culprit, and the response comes back with a null / [] for
+ * that field. The Web page already treats missing fields as empty state.
+ */
+async function safe<T>(label: string, app: FastifyInstance, run: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    app.log.error({ err, analyticsSection: label }, 'analytics query failed');
+    return fallback;
+  }
 }
 
 export async function analyticsRoutes(app: FastifyInstance) {
@@ -20,35 +29,48 @@ export async function analyticsRoutes(app: FastifyInstance) {
     const since = new Date(Date.now() - days * 86400_000);
     const wid = session.workspaceId;
 
-    // All conversations in period
-    const [totals] = await db
-      .select({
-        total: count(),
-        escalated: sql<number>`count(*) filter (where ${conversations.escalatedAt} is not null)`,
-        aiResolved: sql<number>`count(*) filter (where ${conversations.aiHandled} = true and ${conversations.status} = 'resolved')`,
-        agentResolved: sql<number>`count(*) filter (where ${conversations.aiHandled} = false and ${conversations.status} = 'resolved')`,
-        avgFirstResponseMs: sql<number>`avg(extract(epoch from (${conversations.firstResponseAt} - ${conversations.createdAt})) * 1000) filter (where ${conversations.firstResponseAt} is not null)`,
-        // avg minutes from open → resolved. Excludes conversations still open.
-        avgResolutionMinutes: sql<number>`avg(extract(epoch from (${conversations.resolvedAt} - ${conversations.createdAt})) / 60.0) filter (where ${conversations.resolvedAt} is not null)`,
-      })
-      .from(conversations)
-      .where(and(
-        eq(conversations.workspaceId, wid),
-        gte(conversations.createdAt, since),
-      ));
+    const totals = await safe(
+      'totals',
+      app,
+      async () => {
+        const [row] = await db
+          .select({
+            total: count(),
+            escalated: sql<number>`count(*) filter (where ${conversations.escalatedAt} is not null)`,
+            aiResolved: sql<number>`count(*) filter (where ${conversations.aiHandled} = true and ${conversations.status} = 'resolved')`,
+            agentResolved: sql<number>`count(*) filter (where ${conversations.aiHandled} = false and ${conversations.status} = 'resolved')`,
+            avgFirstResponseMs: sql<number>`avg(extract(epoch from (${conversations.firstResponseAt} - ${conversations.createdAt})) * 1000) filter (where ${conversations.firstResponseAt} is not null)`,
+            avgResolutionMinutes: sql<number>`avg(extract(epoch from (${conversations.resolvedAt} - ${conversations.createdAt})) / 60.0) filter (where ${conversations.resolvedAt} is not null)`,
+          })
+          .from(conversations)
+          .where(and(
+            eq(conversations.workspaceId, wid),
+            gte(conversations.createdAt, since),
+          ));
+        return row;
+      },
+      {
+        total: 0, escalated: 0, aiResolved: 0, agentResolved: 0,
+        avgFirstResponseMs: null as number | null,
+        avgResolutionMinutes: null as number | null,
+      },
+    );
 
-    // Open conversations right now
-    const [openNow] = await db
-      .select({ count: count() })
-      .from(conversations)
-      .where(and(
-        eq(conversations.workspaceId, wid),
-        eq(conversations.status, 'open'),
-      ));
+    const openNow = await safe(
+      'openNow',
+      app,
+      async () => {
+        const [row] = await db
+          .select({ count: count() })
+          .from(conversations)
+          .where(and(eq(conversations.workspaceId, wid), eq(conversations.status, 'open')));
+        return row;
+      },
+      { count: 0 },
+    );
 
-    // Daily volume for the period (conversations created per day)
-    const dailyRows = await db.execute(
-      sql`
+    const dailyRows = await safe('daily', app, () =>
+      db.execute(sql`
         SELECT
           date_trunc('day', created_at)::date AS day,
           count(*)::int AS conversations,
@@ -58,12 +80,10 @@ export async function analyticsRoutes(app: FastifyInstance) {
           AND created_at >= ${since}
         GROUP BY 1
         ORDER BY 1
-      `
-    );
+      `), [] as unknown as Awaited<ReturnType<typeof db.execute>>);
 
-    // Top escalation reasons
-    const reasonRows = await db.execute(
-      sql`
+    const reasonRows = await safe('reasons', app, () =>
+      db.execute(sql`
         SELECT escalation_reason, count(*)::int AS cnt
         FROM conversations
         WHERE workspace_id = ${wid}
@@ -72,25 +92,18 @@ export async function analyticsRoutes(app: FastifyInstance) {
         GROUP BY 1
         ORDER BY 2 DESC
         LIMIT 6
-      `
-    );
+      `), [] as unknown as Awaited<ReturnType<typeof db.execute>>);
 
-    // Channel split
-    const channelRows = await db
-      .select({
-        channel: conversations.channel,
-        cnt: count(),
-      })
-      .from(conversations)
-      .where(and(
-        eq(conversations.workspaceId, wid),
-        gte(conversations.createdAt, since),
-      ))
-      .groupBy(conversations.channel);
+    const channelRows = await safe('channels', app, () =>
+      db
+        .select({ channel: conversations.channel, cnt: count() })
+        .from(conversations)
+        .where(and(eq(conversations.workspaceId, wid), gte(conversations.createdAt, since)))
+        .groupBy(conversations.channel),
+    [] as Array<{ channel: string; cnt: number }>);
 
-    // Top contacts by conversation volume in the period.
-    const contactRows = await db.execute(
-      sql`
+    const contactRows = await safe('contacts', app, () =>
+      db.execute(sql`
         SELECT
           c.id::text AS id,
           COALESCE(NULLIF(c.name, ''), c.email, 'Anonymous') AS label,
@@ -103,26 +116,24 @@ export async function analyticsRoutes(app: FastifyInstance) {
         GROUP BY c.id, c.name, c.email
         ORDER BY 4 DESC
         LIMIT 8
-      `,
-    );
+      `), [] as unknown as Awaited<ReturnType<typeof db.execute>>);
 
-    // Top problem topics — sourced from the AI-inferred tags array on
-    // conversations. Falls back to the empty state gracefully if the
-    // workspace hasn't accumulated any tagged conversations yet.
-    const topicRows = await db.execute(
-      sql`
+    // Guard array_length: if `tags` is null the aggregate skips it, so the
+    // where clause avoids unnest(null) which raises in older Postgres.
+    const topicRows = await safe('topics', app, () =>
+      db.execute(sql`
         SELECT
           unnest(tags) AS topic,
           count(*)::int AS cnt
         FROM conversations
         WHERE workspace_id = ${wid}
           AND created_at >= ${since}
+          AND tags IS NOT NULL
           AND array_length(tags, 1) IS NOT NULL
         GROUP BY 1
         ORDER BY 2 DESC
         LIMIT 8
-      `,
-    );
+      `), [] as unknown as Awaited<ReturnType<typeof db.execute>>);
 
     const total = Number(totals.total) || 0;
     const escalated = Number(totals.escalated) || 0;
@@ -143,20 +154,12 @@ export async function analyticsRoutes(app: FastifyInstance) {
           ? Math.round(Number(totals.avgResolutionMinutes) * 10) / 10
           : null,
       },
-      // db.execute() returns postgres.js's RowList (array of rows). Two
-      // serialization pitfalls to defuse before this payload crosses the
-      // React-Server-Component boundary in the Next.js dashboard:
-      //   • Postgres `date` (from ::date) comes back as a JS Date. Force ISO
-      //     string so the client component always gets the same shape.
-      //   • `count()` / count(*) from Postgres is int8; postgres.js returns
-      //     it as a BigInt in some versions, which RSC serialization rejects
-      //     with "Do not know how to serialize a BigInt". `Number()` normalises.
-      daily: dailyRows.map((r: Record<string, unknown>) => ({
+      daily: (dailyRows as unknown as Array<Record<string, unknown>>).map((r) => ({
         day: r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day),
         conversations: Number(r.conversations ?? 0),
         escalations: Number(r.escalations ?? 0),
       })),
-      topEscalationReasons: reasonRows.map((r: Record<string, unknown>) => ({
+      topEscalationReasons: (reasonRows as unknown as Array<Record<string, unknown>>).map((r) => ({
         reason: String(r.escalation_reason ?? ''),
         count: Number(r.cnt ?? 0),
       })),
@@ -164,13 +167,13 @@ export async function analyticsRoutes(app: FastifyInstance) {
         channel: String(r.channel ?? ''),
         count: Number(r.cnt ?? 0),
       })),
-      topContacts: contactRows.map((r: Record<string, unknown>) => ({
+      topContacts: (contactRows as unknown as Array<Record<string, unknown>>).map((r) => ({
         id: String(r.id ?? ''),
         label: String(r.label ?? 'Anonymous'),
         email: r.email ? String(r.email) : null,
         count: Number(r.cnt ?? 0),
       })),
-      topTopics: topicRows.map((r: Record<string, unknown>) => ({
+      topTopics: (topicRows as unknown as Array<Record<string, unknown>>).map((r) => ({
         topic: String(r.topic ?? ''),
         count: Number(r.cnt ?? 0),
       })),

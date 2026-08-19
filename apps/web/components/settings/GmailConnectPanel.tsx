@@ -5,8 +5,37 @@ import type { GmailAccount } from '@/lib/api';
 import { gmailStartOAuthAction, gmailDisconnectAction } from '@/lib/actions';
 
 type Props = {
-  initial: { connected: boolean; account: GmailAccount | null };
+  initial: { connected: boolean; account: GmailAccount | null; redirectUri: string };
 };
+
+function CopyableUri({ uri }: { uri: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+          Redirect URI to register in Google Cloud Console
+        </p>
+        <button
+          onClick={() => {
+            void navigator.clipboard.writeText(uri);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+          className="text-xs px-2 py-0.5 border border-gray-200 rounded bg-white hover:bg-gray-50"
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <code className="text-xs text-gray-800 break-all font-mono">{uri}</code>
+      <p className="text-[11px] text-gray-500 mt-2">
+        Google Cloud Console → APIs &amp; Services → Credentials → your OAuth Client →
+        Authorized redirect URIs. It must match this exactly, or you&apos;ll see
+        &quot;Access blocked: redirect_uri_mismatch&quot;.
+      </p>
+    </div>
+  );
+}
 
 function relTime(iso: string | null): string {
   if (!iso) return 'never';
@@ -42,7 +71,7 @@ export function GmailConnectPanel({ initial }: Props) {
     startTransition(async () => {
       const res = await gmailDisconnectAction();
       if ('error' in res && res.error) setError(res.error);
-      else setState({ connected: false, account: null });
+      else setState((s) => ({ connected: false, account: null, redirectUri: s.redirectUri }));
     });
   }
 
@@ -94,6 +123,7 @@ export function GmailConnectPanel({ initial }: Props) {
       {error && (
         <p className="mt-3 text-xs text-rose-600">{error}</p>
       )}
+      {!state.connected && <CopyableUri uri={state.redirectUri} />}
     </div>
   );
 }

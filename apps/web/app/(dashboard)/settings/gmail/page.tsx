@@ -13,7 +13,7 @@ export default async function GmailSettingsPage({ searchParams }: Props) {
   const { connected, error } = await searchParams;
 
   const [status, rules, members] = await Promise.all([
-    api.gmailStatus(session.token).catch(() => ({ connected: false, account: null })),
+    api.gmailStatus(session.token).catch(() => ({ connected: false, account: null, redirectUri: '' })),
     api.gmailListRules(session.token).catch(() => ({ rules: [] })),
     api.listUsers(session.token).catch(() => []),
   ]);
