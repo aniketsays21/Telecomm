@@ -23,6 +23,7 @@ const adminNav = [
   { href: '/settings/widget', label: 'Widget' },
   { href: '/settings/email', label: 'Email' },
   { href: '/settings/canned', label: 'Canned Responses' },
+  { href: '/settings/sla', label: 'SLA' },
   { href: '/settings/billing', label: 'Billing' },
 ];
 

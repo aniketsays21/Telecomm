@@ -230,6 +230,40 @@ export async function updateWidgetSettingsAction(
   }
 }
 
+export async function updateSlaSettingsAction(
+  _prev: unknown,
+  formData: FormData,
+): Promise<{ success?: boolean; error?: string }> {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+
+  const chatHours = Number(formData.get('chatHours'));
+  const emailHours = Number(formData.get('emailHours'));
+
+  if (!Number.isFinite(chatHours) || chatHours < 0.5 || chatHours > 720) {
+    return { error: 'Chat SLA must be between 0.5 and 720 hours' };
+  }
+  if (!Number.isFinite(emailHours) || emailHours < 0.5 || emailHours > 720) {
+    return { error: 'Email SLA must be between 0.5 and 720 hours' };
+  }
+
+  try {
+    const { api } = await import('./api');
+    const ws = await api.getWorkspace(session.token);
+    await api.updateWorkspaceSettings(session.token, {
+      ...ws.settings,
+      defaultSlaChat: Math.round(chatHours * 3600),
+      defaultSlaEmail: Math.round(emailHours * 3600),
+    });
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/sla');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message };
+  }
+}
+
 export async function cannedCreateAction(_prev: unknown, formData: FormData) {
   const { getSession } = await import('./session');
   const session = await getSession();

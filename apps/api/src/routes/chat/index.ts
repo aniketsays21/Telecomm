@@ -69,6 +69,8 @@ export async function chatRoutes(app: FastifyInstance) {
       .limit(1);
 
     if (!conversation) {
+      const slaSeconds = (ws.settings as any)?.defaultSlaChat ?? 4 * 3600;
+      const slaDueAt = new Date(Date.now() + slaSeconds * 1000);
       [conversation] = await db.insert(conversations).values({
         workspaceId,
         contactId: contact.id,
@@ -76,6 +78,7 @@ export async function chatRoutes(app: FastifyInstance) {
         status: 'open',
         aiHandled: true,
         lastMessageAt: new Date(),
+        slaDueAt,
       }).returning();
     }
 

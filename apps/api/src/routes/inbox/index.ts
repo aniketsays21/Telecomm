@@ -60,6 +60,7 @@ export async function inboxRoutes(app: FastifyInstance) {
         priority: conversations.priority,
         sentiment: conversations.sentiment,
         tags: conversations.tags,
+        slaDueAt: conversations.slaDueAt,
       })
       .from(conversations)
       .innerJoin(contacts, eq(contacts.id, conversations.contactId))

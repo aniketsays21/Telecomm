@@ -74,6 +74,8 @@ export async function inboundEmailRoutes(app: FastifyInstance) {
         // New thread — strip Re: prefix for clean subject storage
         const cleanSubject = rawSubject.replace(/^(Re:\s*)+/i, '').trim();
         const threadId = messageId ?? `thread-${Date.now()}-${contact.id}`;
+        const slaSeconds = (ws.settings as any)?.defaultSlaEmail ?? 8 * 3600;
+        const slaDueAt = new Date(Date.now() + slaSeconds * 1000);
         [conversation] = await db.insert(conversations).values({
           workspaceId,
           contactId: contact.id,
@@ -83,6 +85,7 @@ export async function inboundEmailRoutes(app: FastifyInstance) {
           emailThreadId: threadId,
           aiHandled: true,
           lastMessageAt: new Date(),
+          slaDueAt,
         }).returning();
       } else if (conversation.status === 'resolved') {
         // Customer replied after resolution — reopen

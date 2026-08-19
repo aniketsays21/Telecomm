@@ -198,6 +198,7 @@ export type ConversationSummary = {
   priority: number;
   sentiment: string | null;
   tags: string[];
+  slaDueAt: string | null;
 };
 
 export type Conversation = ConversationSummary & {
@@ -251,6 +252,8 @@ export type WorkspaceSettings = {
   widgetGreeting?: string;
   botName?: string;
   escalationThreshold?: 'cautious' | 'balanced' | 'confident';
+  defaultSlaChat?: number;  // seconds
+  defaultSlaEmail?: number; // seconds
 };
 
 export type WorkspaceData = {

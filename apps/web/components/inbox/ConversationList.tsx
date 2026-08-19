@@ -14,6 +14,14 @@ function timeAgo(isoStr: string) {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
+function slaStatus(slaDueAt: string | null): 'breached' | 'warning' | null {
+  if (!slaDueAt) return null;
+  const msLeft = new Date(slaDueAt).getTime() - Date.now();
+  if (msLeft < 0) return 'breached';
+  if (msLeft < 30 * 60 * 1000) return 'warning';
+  return null;
+}
+
 type Props = {
   conversations: ConversationSummary[];
   hasMore: boolean;
@@ -37,6 +45,7 @@ export function ConversationList({ conversations, hasMore }: Props) {
       {conversations.map(conv => {
         const isActive = pathname.endsWith(conv.id);
         const isEscalated = !conv.aiHandled && !!conv.escalatedAt;
+        const sla = slaStatus(conv.slaDueAt);
 
         return (
           <Link
@@ -81,6 +90,18 @@ export function ConversationList({ conversations, hasMore }: Props) {
                   {conv.aiHandled && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-600 font-medium">
                       AI resolved
+                    </span>
+                  )}
+
+                  {/* SLA badge */}
+                  {sla === 'breached' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 font-medium">
+                      SLA breached
+                    </span>
+                  )}
+                  {sla === 'warning' && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-medium">
+                      SLA at risk
                     </span>
                   )}
                 </div>
