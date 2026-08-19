@@ -21,6 +21,7 @@ import { gmailRoutes } from './routes/gmail/index.js';
 import { webhooksRoutes } from './routes/webhooks/index.js';
 import { triggersRoutes } from './routes/triggers/index.js';
 import { demoRoutes } from './routes/demo/index.js';
+import { domainsRoutes } from './routes/domains/index.js';
 import { startWorkers } from './workers/index.js';
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -76,6 +77,7 @@ async function build() {
   await app.register(webhooksRoutes);
   await app.register(triggersRoutes);
   await app.register(demoRoutes);
+  await app.register(domainsRoutes);
 
   return app;
 }

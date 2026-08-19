@@ -4,6 +4,45 @@ import { redirect } from 'next/navigation';
 import { api } from './api';
 import { setSession, clearSession } from './session';
 
+// ---- Custom domains -------------------------------------------------------
+
+export async function addDomainAction(hostname: string) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    const res = await api.createDomain(session.token, hostname);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/domains');
+    return { domain: res.domain };
+  } catch (e: any) {
+    return { error: e?.message ?? 'Could not add domain' };
+  }
+}
+
+export async function verifyDomainAction(id: string) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return { error: 'Not authenticated' };
+  try {
+    const res = await api.verifyDomain(session.token, id);
+    const { revalidatePath } = await import('next/cache');
+    revalidatePath('/settings/domains');
+    return res;
+  } catch (e: any) {
+    return { error: e?.message ?? 'Verification failed' };
+  }
+}
+
+export async function deleteDomainAction(id: string) {
+  const { getSession } = await import('./session');
+  const session = await getSession();
+  if (!session) return;
+  await api.deleteDomain(session.token, id);
+  const { revalidatePath } = await import('next/cache');
+  revalidatePath('/settings/domains');
+}
+
 // ---- Demo mode ------------------------------------------------------------
 
 export async function demoStatusAction(): Promise<{ enabled: boolean; seededConversations: number } | { error: string }> {

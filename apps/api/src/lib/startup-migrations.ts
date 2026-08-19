@@ -94,6 +94,28 @@ export async function runStartupMigrations(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS "conversations_workspace_demo_idx"
          ON "conversations" ("workspace_id") WHERE "is_demo" = true`,
     ],
+
+    // --- 0007: custom domains ---
+    [
+      'custom_domains table',
+      `CREATE TABLE IF NOT EXISTS "custom_domains" (
+        "id"                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        "workspace_id"           uuid NOT NULL REFERENCES "workspaces"("id") ON DELETE CASCADE,
+        "hostname"               text NOT NULL,
+        "verification_token"     text NOT NULL,
+        "expected_cname_target"  text NOT NULL,
+        "verified_at"            timestamptz,
+        "ssl_status"             text NOT NULL DEFAULT 'pending',
+        "ssl_error"              text,
+        "ssl_issued_at"          timestamptz,
+        "ssl_provider"           text,
+        "created_by"             uuid REFERENCES "users"("id"),
+        "created_at"             timestamptz NOT NULL DEFAULT now(),
+        "updated_at"             timestamptz NOT NULL DEFAULT now()
+      )`,
+    ],
+    ['custom_domains_workspace_idx', `CREATE INDEX IF NOT EXISTS "custom_domains_workspace_idx" ON "custom_domains" ("workspace_id")`],
+    ['custom_domains_hostname_key',  `CREATE UNIQUE INDEX IF NOT EXISTS "custom_domains_hostname_key" ON "custom_domains" ("hostname")`],
   ];
 
   for (const [label, ddl] of statements) {

@@ -163,9 +163,24 @@ function ChannelPie({ data }: { data: AnalyticsData['channelSplit'] }) {
   );
 }
 
+// Small pill that labels a section as demo/sample data. Prevents a viewer
+// mistaking the placeholder chart for real numbers.
+function SampleTag() {
+  return (
+    <span
+      className="text-[10px] px-1.5 py-0.5 rounded font-medium uppercase tracking-wide"
+      style={{ background: 'var(--rule-2)', color: 'var(--ash)', letterSpacing: '0.06em' }}
+    >
+      Sample
+    </span>
+  );
+}
+
 // Segmented horizontal bar for sentiment distribution. Neutral tones for
 // neutral/positive so the palette doesn't scream; brick and ochre pull
 // attention to negative/frustrated/angry — the ones an operator should act on.
+// When real data is empty, we render a representative sample so the section
+// still communicates what the chart will look like once messages flow in.
 function SentimentStrip({ data }: { data: Array<{ sentiment: string; count: number }> }) {
   const order: Array<{ key: string; label: string; color: string; text: string }> = [
     { key: 'positive',   label: 'Positive',   color: 'var(--forest)',      text: 'var(--paper)' },
@@ -174,22 +189,28 @@ function SentimentStrip({ data }: { data: Array<{ sentiment: string; count: numb
     { key: 'frustrated', label: 'Frustrated', color: '#C67341',            text: 'var(--paper)' },
     { key: 'angry',      label: 'Angry',      color: 'var(--brick)',       text: 'var(--paper)' },
   ];
-  const total = data.reduce((s, r) => s + r.count, 0);
-  if (total === 0) {
-    return (
-      <p className="text-sm py-8 italic text-center" style={{ color: 'var(--dust)' }}>
-        No sentiment classified yet — every new customer message will get one.
-      </p>
-    );
-  }
-  const bucket = new Map(data.map((r) => [r.sentiment.toLowerCase(), r.count]));
+  const realTotal = data.reduce((s, r) => s + r.count, 0);
+  const isSample = realTotal === 0;
+  // Plausible distribution when nothing is classified yet — biased toward
+  // positive/neutral like most inbound support traffic.
+  const sampleData = isSample
+    ? [
+        { sentiment: 'positive', count: 42 },
+        { sentiment: 'neutral', count: 31 },
+        { sentiment: 'negative', count: 15 },
+        { sentiment: 'frustrated', count: 8 },
+        { sentiment: 'angry', count: 4 },
+      ]
+    : data;
+  const total = sampleData.reduce((s, r) => s + r.count, 0);
+  const bucket = new Map(sampleData.map((r) => [r.sentiment.toLowerCase(), r.count]));
   const rows = order
     .map((o) => ({ ...o, count: bucket.get(o.key) ?? 0 }))
     .filter((r) => r.count > 0);
 
   return (
-    <div>
-      <div className="flex w-full overflow-hidden" style={{ height: 44, border: '1px solid var(--rule)' }}>
+    <div style={{ opacity: isSample ? 0.75 : 1 }}>
+      <div className="flex w-full overflow-hidden rounded" style={{ height: 44, border: '1px solid var(--rule)' }}>
         {rows.map((r) => {
           const pct = (r.count / total) * 100;
           return (
@@ -204,40 +225,50 @@ function SentimentStrip({ data }: { data: Array<{ sentiment: string; count: numb
           );
         })}
       </div>
-      <ul className="flex flex-wrap gap-x-6 gap-y-2 mt-4">
-        {rows.map((r) => (
-          <li key={r.key} className="flex items-baseline gap-2 text-xs" style={{ color: 'var(--ink)' }}>
-            <span className="w-2 h-2 rounded-full" style={{ background: r.color }} aria-hidden="true" />
-            <span>{r.label}</span>
-            <span className="font-numeric" style={{ color: 'var(--ash)' }}>{r.count}</span>
-          </li>
-        ))}
-      </ul>
+      <div className="flex items-center justify-between mt-4">
+        <ul className="flex flex-wrap gap-x-6 gap-y-2">
+          {rows.map((r) => (
+            <li key={r.key} className="flex items-baseline gap-2 text-xs" style={{ color: 'var(--ink)' }}>
+              <span className="w-2 h-2 rounded-full" style={{ background: r.color }} aria-hidden="true" />
+              <span>{r.label}</span>
+              <span className="font-numeric" style={{ color: 'var(--ash)' }}>{r.count}</span>
+            </li>
+          ))}
+        </ul>
+        {isSample && <SampleTag />}
+      </div>
     </div>
   );
 }
 
 function BarChart({ data }: { data: AnalyticsData['daily'] }) {
-  if (!data.length) {
-    return (
-      <p className="text-sm py-12 text-center italic" style={{ color: 'var(--dust)' }}>
-        No data in this period.
-      </p>
-    );
-  }
-
-  const maxConv = Math.max(...data.map((d) => d.conversations), 1);
+  const isSample = !data.length;
+  // Fabricate 14 days of plausible traffic so the panel isn't blank on a
+  // brand-new workspace. Wave-shaped counts read as "look, real support
+  // volume swings by day" rather than a random noise line.
+  const rows = isSample
+    ? Array.from({ length: 14 }, (_, i) => {
+        const day = new Date(Date.now() - (13 - i) * 86400_000);
+        const base = 18 + Math.round(10 * Math.sin(i * 0.7));
+        return {
+          day: day.toISOString().slice(0, 10),
+          conversations: Math.max(4, base + Math.round(6 * Math.sin(i * 1.9))),
+          escalations: Math.max(0, Math.round(base / 6) + (i % 3 === 0 ? 1 : 0)),
+        };
+      })
+    : data;
+  const maxConv = Math.max(...rows.map((d) => d.conversations), 1);
   const H = 140;
   const W = 640;
-  const barW = Math.max(4, Math.floor((W / data.length) * 0.55));
-  const gap = W / data.length;
+  const barW = Math.max(4, Math.floor((W / rows.length) * 0.55));
+  const gap = W / rows.length;
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto" style={{ opacity: isSample ? 0.75 : 1 }}>
       <svg viewBox={`0 0 ${W} ${H + 34}`} className="w-full" style={{ minWidth: 320 }}>
         {/* Baseline */}
         <line x1="0" y1={H} x2={W} y2={H} stroke="var(--rule)" strokeWidth="1" />
-        {data.map((d, i) => {
+        {rows.map((d, i) => {
           const x = i * gap + gap / 2;
           const convH = (d.conversations / maxConv) * H;
           const escH = (d.escalations / maxConv) * H;
@@ -262,7 +293,7 @@ function BarChart({ data }: { data: AnalyticsData['daily'] }) {
                   opacity={0.9}
                 />
               )}
-              {(data.length <= 14 || i % Math.ceil(data.length / 10) === 0) && (
+              {(rows.length <= 14 || i % Math.ceil(rows.length / 10) === 0) && (
                 <text
                   x={x}
                   y={H + 20}
@@ -278,10 +309,94 @@ function BarChart({ data }: { data: AnalyticsData['daily'] }) {
           );
         })}
       </svg>
-      <div className="flex gap-6 justify-end mt-3 text-[11px]" style={{ color: 'var(--ash)' }}>
+      <div className="flex gap-6 justify-end items-center mt-3 text-[11px]" style={{ color: 'var(--ash)' }}>
         <span className="status-dot" style={{ color: 'var(--ink)' }}>Conversations</span>
         <span className="status-dot" style={{ color: 'var(--brick)' }}>Escalations</span>
+        {isSample && <SampleTag />}
       </div>
+    </div>
+  );
+}
+
+function TopProblemsPanel({ topics }: { topics: AnalyticsData['topTopics'] }) {
+  const isSample = topics.length === 0;
+  const rows = isSample
+    ? [
+        { topic: 'shipping', count: 48 },
+        { topic: 'refund', count: 34 },
+        { topic: 'sizing', count: 27 },
+        { topic: 'account', count: 21 },
+        { topic: 'pricing', count: 15 },
+        { topic: 'tech-issue', count: 11 },
+      ]
+    : topics;
+  const max = rows[0].count;
+  return (
+    <div style={{ opacity: isSample ? 0.75 : 1 }}>
+      <div className="flex items-baseline justify-between mb-4">
+        <h3 className="text-lg font-semibold" style={{ color: 'var(--ink)' }}>Top problems</h3>
+        {isSample && <SampleTag />}
+      </div>
+      <ol className="space-y-3">
+        {rows.map((t, i) => {
+          const pct = Math.round((t.count / max) * 100);
+          return (
+            <li key={i}>
+              <div className="flex items-baseline justify-between mb-1">
+                <span className="text-sm capitalize" style={{ color: 'var(--ink)' }}>
+                  <span className="font-numeric text-xs mr-2" style={{ color: 'var(--dust)' }}>
+                    {String(i + 1).padStart(2, '0')}
+                  </span>
+                  {t.topic.replace(/-/g, ' ')}
+                </span>
+                <span className="font-numeric text-xs" style={{ color: 'var(--ash)' }}>{t.count}</span>
+              </div>
+              <div className="h-1 w-full rounded-full" style={{ background: 'var(--rule-2)' }}>
+                <div className="h-1 rounded-full" style={{ background: 'var(--forest)', width: `${pct}%` }} />
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+function TopContactsPanel({ contacts }: { contacts: AnalyticsData['topContacts'] }) {
+  const isSample = contacts.length === 0;
+  const rows = isSample
+    ? [
+        { id: '1', label: 'Priya Sharma',   email: 'priya.sharma42@gmail.com',    count: 12 },
+        { id: '2', label: 'Rohan Verma',    email: 'rohan.verma17@outlook.com',   count: 9 },
+        { id: '3', label: 'Emily Johnson',  email: 'emily.j@yahoo.com',           count: 7 },
+        { id: '4', label: 'Aditi Iyer',     email: 'aditi.iyer23@gmail.com',      count: 6 },
+        { id: '5', label: 'Karan Kapoor',   email: 'karan.k11@icloud.com',        count: 5 },
+        { id: '6', label: 'Meera Nair',     email: 'meera.nair@protonmail.com',   count: 4 },
+      ]
+    : contacts;
+  return (
+    <div style={{ opacity: isSample ? 0.75 : 1 }}>
+      <div className="flex items-baseline justify-between mb-4">
+        <h3 className="text-lg font-semibold" style={{ color: 'var(--ink)' }}>Top contacts</h3>
+        {isSample && <SampleTag />}
+      </div>
+      <ul className="space-y-2.5">
+        {rows.map((c, i) => (
+          <li
+            key={c.id}
+            className="flex items-baseline justify-between py-2"
+            style={{ borderBottom: i === rows.length - 1 ? 'none' : '1px solid var(--rule-2)' }}
+          >
+            <div className="min-w-0 mr-3">
+              <p className="text-sm truncate" style={{ color: 'var(--ink)' }}>{c.label}</p>
+              {c.email && c.email !== c.label && (
+                <p className="text-xs truncate" style={{ color: 'var(--dust)' }}>{c.email}</p>
+              )}
+            </div>
+            <span className="font-numeric text-sm" style={{ color: 'var(--ash)' }}>{c.count}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -356,10 +471,12 @@ export function AnalyticsDashboard({ initial }: Props) {
       {/* Volume chart */}
       <section>
         <div className="flex items-baseline justify-between mb-4">
-          <h3 className="font-display text-2xl italic" style={{ color: 'var(--ink)' }}>Daily volume</h3>
-          <p className="text-xs" style={{ color: 'var(--ash)' }}>{daily.length} days</p>
+          <h3 className="text-lg font-semibold" style={{ color: 'var(--ink)' }}>Daily volume</h3>
+          <p className="text-xs" style={{ color: 'var(--ash)' }}>
+            {daily.length > 0 ? `${daily.length} days` : 'preview'}
+          </p>
         </div>
-        <div className="p-6" style={{ background: 'var(--paper)', border: '1px solid var(--rule)' }}>
+        <div className="p-6 rounded-lg" style={{ background: 'var(--paper)', border: '1px solid var(--rule)' }}>
           <BarChart data={daily} />
         </div>
       </section>
@@ -369,76 +486,22 @@ export function AnalyticsDashboard({ initial }: Props) {
           five-line list. */}
       <section>
         <div className="flex items-baseline justify-between mb-4">
-          <h3 className="font-display text-2xl italic" style={{ color: 'var(--ink)' }}>How customers are feeling</h3>
+          <h3 className="text-lg font-semibold" style={{ color: 'var(--ink)' }}>How customers are feeling</h3>
           <p className="text-xs" style={{ color: 'var(--ash)' }}>
-            {sentimentBreakdown.reduce((s, r) => s + r.count, 0)} classified
+            {sentimentBreakdown.reduce((s, r) => s + r.count, 0) > 0
+              ? `${sentimentBreakdown.reduce((s, r) => s + r.count, 0)} classified`
+              : 'preview'}
           </p>
         </div>
         <SentimentStrip data={sentimentBreakdown} />
       </section>
 
-      {/* Top problems + top contacts, editorial two-column */}
+      {/* Top problems + top contacts, editorial two-column. Both fall back to
+          a realistic sample when real data is empty so the panels never look
+          broken — every sample is labeled so it can't be mistaken for real. */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-10">
-        <div>
-          <h3 className="font-display text-2xl italic mb-4" style={{ color: 'var(--ink)' }}>
-            Top problems
-          </h3>
-          {topTopics.length === 0 ? (
-            <p className="text-sm italic" style={{ color: 'var(--dust)' }}>
-              The AI tags each thread by topic; nothing tagged yet in this period.
-            </p>
-          ) : (
-            <ol className="space-y-3">
-              {topTopics.map((t, i) => {
-                const max = topTopics[0].count;
-                const pct = Math.round((t.count / max) * 100);
-                return (
-                  <li key={i}>
-                    <div className="flex items-baseline justify-between mb-1">
-                      <span className="text-sm capitalize" style={{ color: 'var(--ink)' }}>
-                        <span className="font-numeric text-xs mr-2" style={{ color: 'var(--dust)' }}>
-                          {String(i + 1).padStart(2, '0')}
-                        </span>
-                        {t.topic.replace(/-/g, ' ')}
-                      </span>
-                      <span className="font-numeric text-xs" style={{ color: 'var(--ash)' }}>{t.count}</span>
-                    </div>
-                    <div className="h-px w-full" style={{ background: 'var(--rule)' }}>
-                      <div className="h-px" style={{ background: 'var(--forest)', width: `${pct}%` }} />
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </div>
-
-        <div>
-          <h3 className="font-display text-2xl italic mb-4" style={{ color: 'var(--ink)' }}>
-            Top contacts
-          </h3>
-          {topContacts.length === 0 ? (
-            <p className="text-sm italic" style={{ color: 'var(--dust)' }}>No contacts yet.</p>
-          ) : (
-            <ul className="space-y-2.5">
-              {topContacts.map((c, i) => (
-                <li
-                  key={c.id}
-                  className="flex items-baseline justify-between py-2"
-                  style={{ borderBottom: i === topContacts.length - 1 ? 'none' : '1px solid var(--rule-2)' }}
-                >
-                  <div className="min-w-0 mr-3">
-                    <p className="text-sm truncate" style={{ color: 'var(--ink)' }}>{c.label}</p>
-                    {c.email && c.email !== c.label && (
-                      <p className="text-xs truncate" style={{ color: 'var(--dust)' }}>{c.email}</p>
-                    )}
-                  </div>
-                  <span className="font-numeric text-sm" style={{ color: 'var(--ash)' }}>{c.count}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <TopProblemsPanel topics={topTopics} />
+        <TopContactsPanel contacts={topContacts} />
       </section>
 
       {/* Escalation reasons */}

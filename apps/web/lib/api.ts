@@ -211,6 +211,28 @@ export const api = {
       headers: { Authorization: `Bearer ${token}` },
     }),
 
+  // Custom domains
+  listDomains: (token: string) =>
+    request<{ domains: CustomDomain[]; cnameTarget: string }>('/domains', {}, token),
+  createDomain: (token: string, hostname: string) =>
+    request<{ domain: CustomDomain; cnameTarget: string }>(
+      '/domains', { method: 'POST', body: JSON.stringify({ hostname }) }, token,
+    ),
+  verifyDomain: (token: string, id: string) =>
+    request<{
+      ok: boolean;
+      step?: 'cname' | 'txt';
+      message?: string;
+      observed?: string[];
+      verification?: { cnameFound: string; txtFound: string };
+      ssl?: { ok: boolean; provider: string; message: string };
+    }>(`/domains/${id}/verify`, { method: 'POST', body: '{}' }, token),
+  deleteDomain: (token: string, id: string) =>
+    fetch(`${API}/domains/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    }),
+
   // Demo mode
   demoStatus: (token: string) =>
     request<{ enabled: boolean; seededConversations: number }>('/demo/status', {}, token),
@@ -440,6 +462,20 @@ export type GmailRule = {
   createdAt: string;
   assigneeName: string | null;
   assigneeEmail: string | null;
+};
+
+export type CustomDomain = {
+  id: string;
+  workspaceId: string;
+  hostname: string;
+  verificationToken: string;
+  expectedCnameTarget: string;
+  verifiedAt: string | null;
+  sslStatus: 'pending' | 'issuing' | 'active' | 'error';
+  sslError: string | null;
+  sslIssuedAt: string | null;
+  sslProvider: string | null;
+  createdAt: string;
 };
 
 export type Webhook = {

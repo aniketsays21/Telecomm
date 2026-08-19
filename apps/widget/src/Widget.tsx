@@ -316,6 +316,13 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
         },
       ]);
       seenIdsRef.current.add(botId);
+      // Advance the poll watermark past the AI reply we just added. Otherwise
+      // the first poll (which fires as soon as conversationId is set) would
+      // fetch every message since epoch — including this reply — and re-add
+      // it under the server's UUID, since our client-side `b-{ts}` id isn't
+      // in seenIdsRef under that key. Any subsequent agent reply arrives with
+      // a createdAt > this timestamp and still gets picked up normally.
+      lastSeenAtRef.current = new Date().toISOString();
       setConversationId(res.conversationId);
       persistConversationId(workspaceId, res.conversationId);
       if (res.escalated) setEscalated(true);

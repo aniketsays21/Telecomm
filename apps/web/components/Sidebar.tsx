@@ -39,6 +39,7 @@ const adminNavGroups: Array<{ eyebrow: string; items: { href: string; label: str
     eyebrow: 'Configure',
     items: [
       { href: '/settings/knowledge', label: 'Knowledge base' },
+      { href: '/settings/domains',   label: 'Custom domains' },
       { href: '/settings/webhooks',  label: 'Webhooks' },
       { href: '/settings/canned',    label: 'Canned replies' },
       { href: '/settings/sla',       label: 'SLA' },
