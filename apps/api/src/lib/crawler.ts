@@ -1,7 +1,11 @@
 export type CrawledPage = { url: string; title: string; content: string };
 
 const USER_AGENT = 'Telecomm-Crawler/1.0 (+https://telecomm.io/bot)';
-const MAX_PAGES = 25;
+// 500 pages is a middle ground: covers small brand help centers end-to-end
+// while capping crawl time. A crawler that walked unbounded would DoS its own
+// job queue for a large marketing site. Bump via the `MAX_CRAWL_PAGES` env var
+// if you know the site is bigger and don't mind the longer ingest time.
+const MAX_PAGES = Number(process.env.MAX_CRAWL_PAGES ?? 500);
 const CRAWL_DELAY_MS = 500;
 
 function extractText(html: string): { title: string; content: string } {

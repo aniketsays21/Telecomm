@@ -102,18 +102,27 @@ export async function analyticsRoutes(app: FastifyInstance) {
         aiResolutionRate: total > 0 ? Math.round((aiResolved / total) * 1000) / 10 : 0,
         avgFirstResponseMs: totals.avgFirstResponseMs ? Math.round(Number(totals.avgFirstResponseMs)) : null,
       },
-      // db.execute() returns postgres.js's RowList, which IS the array of rows —
-      // there is no `.rows` wrapper (that shape is node-postgres). Iterate directly.
+      // db.execute() returns postgres.js's RowList (array of rows). Two
+      // serialization pitfalls to defuse before this payload crosses the
+      // React-Server-Component boundary in the Next.js dashboard:
+      //   • Postgres `date` (from ::date) comes back as a JS Date. Force ISO
+      //     string so the client component always gets the same shape.
+      //   • `count()` / count(*) from Postgres is int8; postgres.js returns
+      //     it as a BigInt in some versions, which RSC serialization rejects
+      //     with "Do not know how to serialize a BigInt". `Number()` normalises.
       daily: dailyRows.map((r: Record<string, unknown>) => ({
-        day: r.day as string,
-        conversations: Number(r.conversations),
-        escalations: Number(r.escalations),
+        day: r.day instanceof Date ? r.day.toISOString().slice(0, 10) : String(r.day),
+        conversations: Number(r.conversations ?? 0),
+        escalations: Number(r.escalations ?? 0),
       })),
       topEscalationReasons: reasonRows.map((r: Record<string, unknown>) => ({
-        reason: r.escalation_reason as string,
-        count: Number(r.cnt),
+        reason: String(r.escalation_reason ?? ''),
+        count: Number(r.cnt ?? 0),
       })),
-      channelSplit: channelRows.map(r => ({ channel: r.channel, count: Number(r.cnt) })),
+      channelSplit: channelRows.map((r) => ({
+        channel: String(r.channel ?? ''),
+        count: Number(r.cnt ?? 0),
+      })),
     };
   });
 }
