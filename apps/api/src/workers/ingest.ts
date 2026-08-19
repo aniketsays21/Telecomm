@@ -1,4 +1,4 @@
-import { Worker, Queue } from 'bullmq';
+import { Worker } from 'bullmq';
 import { db } from '@telecomm/db';
 import { sources, documents, chunks } from '@telecomm/db/schema';
 import { QUEUES } from '@telecomm/shared';
@@ -8,7 +8,9 @@ import { chunkText } from '../lib/chunker.js';
 import { createHash } from 'crypto';
 import { redisConnection } from '../lib/redis.js';
 
-export const embedQueue = new Queue(QUEUES.EMBED, { connection: redisConnection() });
+// Retrieval switched from vector embeddings to Postgres full-text search
+// (chunks.tsv). Chunk rows are ready for search the moment they're inserted;
+// no embed queue, no async worker, no provider dependency.
 
 export function startIngestWorker() {
   const worker = new Worker(
@@ -63,25 +65,13 @@ export function startIngestWorker() {
             // Create chunk records (embedding happens in embed worker)
             const textChunks = chunkText(page.content);
             if (textChunks.length > 0) {
-              const insertedChunks = await db
-                .insert(chunks)
-                .values(textChunks.map(c => ({
-                  documentId: doc.id,
-                  workspaceId: source.workspaceId,
-                  content: c.content,
-                  tokenCount: c.tokenCount,
-                  position: c.position,
-                })))
-                .returning({ id: chunks.id });
-
-              // Queue embedding for each chunk
-              await embedQueue.addBulk(
-                insertedChunks.map(c => ({
-                  name: 'embed-chunk',
-                  data: { chunkId: c.id },
-                  opts: { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
-                })),
-              );
+              await db.insert(chunks).values(textChunks.map(c => ({
+                documentId: doc.id,
+                workspaceId: source.workspaceId,
+                content: c.content,
+                tokenCount: c.tokenCount,
+                position: c.position,
+              })));
             }
 
             docCount++;
@@ -116,24 +106,13 @@ export function startIngestWorker() {
 
           const textChunks = chunkText(content);
           if (textChunks.length > 0) {
-            const inserted = await db
-              .insert(chunks)
-              .values(textChunks.map(c => ({
-                documentId: doc.id,
-                workspaceId: source.workspaceId,
-                content: c.content,
-                tokenCount: c.tokenCount,
-                position: c.position,
-              })))
-              .returning({ id: chunks.id });
-
-            await embedQueue.addBulk(
-              inserted.map(c => ({
-                name: 'embed-chunk',
-                data: { chunkId: c.id },
-                opts: { attempts: 3, backoff: { type: 'exponential', delay: 2000 } },
-              })),
-            );
+            await db.insert(chunks).values(textChunks.map(c => ({
+              documentId: doc.id,
+              workspaceId: source.workspaceId,
+              content: c.content,
+              tokenCount: c.tokenCount,
+              position: c.position,
+            })));
           }
 
           await db.update(sources).set({

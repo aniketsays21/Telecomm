@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db } from '@telecomm/db';
 import { workspaces, contacts, conversations, messages, conversationSummaries, contactPageViews } from '@telecomm/db/schema';
-import { embedQuery, generateAnswer, summarizeConversation } from '@telecomm/ai';
+import { generateAnswer, summarizeConversation } from '@telecomm/ai';
 import { searchChunks } from '../../lib/search.js';
 import { Queue } from 'bullmq';
 import { QUEUES } from '@telecomm/shared';
@@ -107,8 +107,7 @@ export async function chatRoutes(app: FastifyInstance) {
         content: r.body,
       }));
 
-      const queryEmbedding = await embedQuery(message);
-      const chunks = await searchChunks(workspaceId, queryEmbedding, 5);
+      const chunks = await searchChunks(workspaceId, message, 5);
       const aiAnswer = await generateAnswer(
         message,
         chunks,

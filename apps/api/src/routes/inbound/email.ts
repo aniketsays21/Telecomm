@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { eq, and, inArray } from 'drizzle-orm';
 import { db } from '@telecomm/db';
 import { workspaces, contacts, conversations, messages } from '@telecomm/db/schema';
-import { embedQuery, generateAnswer } from '@telecomm/ai';
+import { generateAnswer } from '@telecomm/ai';
 import { searchChunks } from '../../lib/search.js';
 import { sendMail, buildOutboundMessageId } from '../../lib/mailer.js';
 import { verifyInboundWebhookAuth } from '../../lib/postmark-auth.js';
@@ -273,8 +273,7 @@ export async function inboundEmailRoutes(app: FastifyInstance) {
         content: r.body,
       }));
 
-      const queryEmbedding = await embedQuery(text || rawSubject);
-      const chunks = await searchChunks(workspaceId, queryEmbedding, 5);
+      const chunks = await searchChunks(workspaceId, text || rawSubject, 5);
       const aiAnswer = await generateAnswer(
         text || rawSubject,
         chunks,
