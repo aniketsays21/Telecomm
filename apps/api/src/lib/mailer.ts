@@ -2,8 +2,9 @@ import nodemailer from 'nodemailer';
 
 // Transporter is lazily created and reused
 let _transport: nodemailer.Transporter | null = null;
+let _isEthereal = false;
 
-function getTransport() {
+async function getTransport() {
   if (_transport) return _transport;
 
   const host = process.env.SMTP_HOST;
@@ -12,12 +13,15 @@ function getTransport() {
   const pass = process.env.SMTP_PASS;
 
   if (!host || !user || !pass) {
-    // Dev: use Ethereal (fake SMTP — emails are captured, not sent)
+    // Dev: create a real Ethereal test account — emails are captured, not sent
+    const testAccount = await nodemailer.createTestAccount();
     _transport = nodemailer.createTransport({
       host: 'smtp.ethereal.email',
       port: 587,
-      auth: { user: 'dev@ethereal.email', pass: 'dev' },
+      auth: { user: testAccount.user, pass: testAccount.pass },
     });
+    _isEthereal = true;
+    console.log('[mailer] Using Ethereal (dev) — emails will not be delivered');
     return _transport;
   }
 
@@ -43,7 +47,7 @@ export interface MailOptions {
 
 export async function sendMail(opts: MailOptions) {
   const from = process.env.SMTP_FROM ?? process.env.SMTP_USER ?? 'support@telecomm.app';
-  const transport = getTransport();
+  const transport = await getTransport();
 
   const info = await transport.sendMail({
     from,
@@ -56,6 +60,10 @@ export async function sendMail(opts: MailOptions) {
     references: opts.references,
     messageId: opts.messageId,
   });
+
+  if (_isEthereal) {
+    console.log('[mailer] Preview URL:', nodemailer.getTestMessageUrl(info));
+  }
 
   return info;
 }
