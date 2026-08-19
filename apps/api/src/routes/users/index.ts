@@ -15,45 +15,48 @@ const inviteBody = z.object({
 export const usersRoutes: FastifyPluginAsync = async (app) => {
   // GET /users/me
   app.get('/users/me', async (request, reply) => {
-    if (!requireAuth(request, reply)) return;
+    const session = requireAuth(request, reply);
+    if (!session) return;
     const [user] = await db.select({
       id: users.id, email: users.email, name: users.name, role: users.role, status: users.status,
-    }).from(users).where(eq(users.id, request.session.userId)).limit(1);
+    }).from(users).where(eq(users.id, session.userId)).limit(1);
     if (!user) return reply.code(404).send({ error: 'Not found' });
     return user;
   });
 
   // GET /users — list workspace members (admin only)
   app.get('/users', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
+    const session = requireAdmin(request, reply);
+    if (!session) return;
     const members = await db.select({
       id: users.id, email: users.email, name: users.name, role: users.role, status: users.status,
       availability: users.availability, inviteAcceptedAt: users.inviteAcceptedAt, createdAt: users.createdAt,
-    }).from(users).where(eq(users.workspaceId, request.session.workspaceId));
+    }).from(users).where(eq(users.workspaceId, session.workspaceId));
     return members;
   });
 
   // POST /users/invite — admin invites a teammate
   app.post('/users/invite', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
+    const session = requireAdmin(request, reply);
+    if (!session) return;
 
     const body = inviteBody.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
     // Prevent duplicate invite for same email in same workspace
     const existing = await db.select({ id: users.id }).from(users)
-      .where(and(eq(users.workspaceId, request.session.workspaceId), eq(users.email, body.data.email)))
+      .where(and(eq(users.workspaceId, session.workspaceId), eq(users.email, body.data.email)))
       .limit(1);
     if (existing.length) return reply.code(409).send({ error: 'This email is already a member' });
 
     const inviteToken = randomBytes(32).toString('hex');
     const [invited] = await db.insert(users).values({
-      workspaceId: request.session.workspaceId,
+      workspaceId: session.workspaceId,
       email: body.data.email,
       name: body.data.name ?? body.data.email.split('@')[0],
       role: body.data.role,
       inviteToken,
-      invitedBy: request.session.userId,
+      invitedBy: session.userId,
     }).returning({ id: users.id, email: users.email, name: users.name, role: users.role, inviteToken: users.inviteToken });
 
     // TODO: send invite email via Postmark when key is configured
@@ -63,10 +66,11 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
 
   // DELETE /users/:id — admin removes a member
   app.delete('/users/:id', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
+    const session = requireAdmin(request, reply);
+    if (!session) return;
     const { id } = request.params as { id: string };
-    if (id === request.session.userId) return reply.code(400).send({ error: 'Cannot remove yourself' });
-    await db.delete(users).where(and(eq(users.id, id), eq(users.workspaceId, request.session.workspaceId)));
+    if (id === session.userId) return reply.code(400).send({ error: 'Cannot remove yourself' });
+    await db.delete(users).where(and(eq(users.id, id), eq(users.workspaceId, session.workspaceId)));
     return reply.code(204).send();
   });
 };

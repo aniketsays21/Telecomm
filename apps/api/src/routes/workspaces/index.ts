@@ -40,14 +40,16 @@ function normalizeEmailSettings(settings: Record<string, unknown>) {
 
 export const workspacesRoutes: FastifyPluginAsync = async (app) => {
   app.get('/workspaces/current', async (request, reply) => {
-    if (!requireAuth(request, reply)) return;
-    const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, request.session.workspaceId)).limit(1);
+    const session = requireAuth(request, reply);
+    if (!session) return;
+    const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).limit(1);
     if (!ws) return reply.code(404).send({ error: 'Not found' });
     return ws;
   });
 
   app.patch('/workspaces/current', async (request, reply) => {
-    if (!requireAdmin(request, reply)) return;
+    const session = requireAdmin(request, reply);
+    if (!session) return;
     const body = updateBody.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
@@ -64,7 +66,7 @@ export const workspacesRoutes: FastifyPluginAsync = async (app) => {
       const [current] = await db
         .select({ settings: workspaces.settings })
         .from(workspaces)
-        .where(eq(workspaces.id, request.session.workspaceId))
+        .where(eq(workspaces.id, session.workspaceId))
         .limit(1);
       updates.settings = { ...((current?.settings as object) ?? {}), ...normalized.value };
     }
@@ -72,7 +74,7 @@ export const workspacesRoutes: FastifyPluginAsync = async (app) => {
     try {
       const [updated] = await db.update(workspaces)
         .set(updates as Partial<typeof workspaces.$inferInsert>)
-        .where(eq(workspaces.id, request.session.workspaceId)).returning();
+        .where(eq(workspaces.id, session.workspaceId)).returning();
       return updated;
     } catch (err: any) {
       // workspaces_support_email_key — the address routes to another workspace.
