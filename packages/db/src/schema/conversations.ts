@@ -21,6 +21,10 @@ export const conversations = pgTable('conversations', {
   tags: text('tags').array().notNull().default([]),
   subject: text('subject'),
   emailThreadId: text('email_thread_id'),
+  // Which mail transport this thread lives on: 'gmail' | 'smtp' | null.
+  // null keeps the legacy Postmark path for anything created before the Gmail
+  // integration existed. The reply path branches on this.
+  emailProvider: text('email_provider'),
   aiHandled: boolean('ai_handled').notNull().default(true),
   escalatedAt: timestamp('escalated_at', { withTimezone: true }),
   escalationReason: text('escalation_reason'),
