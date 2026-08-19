@@ -23,7 +23,11 @@ export function startIngestWorker() {
 
       try {
         if (source.type === 'website') {
-          const url = (source.config as any)?.url as string;
+          // Both onboarding and the knowledge route write the URL as
+          // `config.startUrl`. Also accept `config.url` for any legacy row
+          // written before the endpoints converged on startUrl.
+          const cfg = (source.config as any) ?? {};
+          const url = (cfg.startUrl ?? cfg.url) as string | undefined;
           if (!url) throw new Error('No URL in source config');
 
           let docCount = 0;
