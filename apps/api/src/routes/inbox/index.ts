@@ -70,6 +70,101 @@ export async function inboxRoutes(app: FastifyInstance) {
     return { conversations: rows, hasMore: rows.length === query.limit };
   });
 
+  // GET /inbox/conversations/export — CSV download (same filters, no pagination)
+  app.get('/inbox/conversations/export', async (request, reply) => {
+    const session = requireAuth(request, reply);
+    if (!session) return;
+
+    const query = z.object({
+      status: z.enum(['open', 'snoozed', 'resolved', 'all']).default('open'),
+      channel: z.enum(['chat', 'email']).optional(),
+      assigneeId: z.string().uuid().optional(),
+      q: z.string().max(200).optional(),
+    }).parse(request.query);
+
+    const filters = [
+      eq(conversations.workspaceId, session.workspaceId),
+      query.status !== 'all' ? eq(conversations.status, query.status as any) : undefined,
+      query.channel ? eq(conversations.channel, query.channel) : undefined,
+      query.assigneeId ? eq(conversations.assigneeId, query.assigneeId) : undefined,
+      query.q
+        ? or(
+            ilike(contacts.name, `%${query.q}%`),
+            ilike(contacts.email, `%${query.q}%`),
+            ilike(conversations.subject, `%${query.q}%`),
+          )
+        : undefined,
+    ].filter(Boolean) as any[];
+
+    const rows = await db
+      .select({
+        id: conversations.id,
+        status: conversations.status,
+        channel: conversations.channel,
+        subject: conversations.subject,
+        aiHandled: conversations.aiHandled,
+        escalatedAt: conversations.escalatedAt,
+        escalationReason: conversations.escalationReason,
+        priority: conversations.priority,
+        sentiment: conversations.sentiment,
+        tags: conversations.tags,
+        csatRating: conversations.csatRating,
+        firstResponseAt: conversations.firstResponseAt,
+        resolvedAt: conversations.resolvedAt,
+        createdAt: conversations.createdAt,
+        lastMessageAt: conversations.lastMessageAt,
+        contactName: contacts.name,
+        contactEmail: contacts.email,
+      })
+      .from(conversations)
+      .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+      .where(and(...filters))
+      .orderBy(desc(conversations.lastMessageAt))
+      .limit(10000);
+
+    function esc(v: unknown): string {
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    }
+
+    const header = [
+      'id', 'status', 'channel', 'subject', 'contact_name', 'contact_email',
+      'priority', 'sentiment', 'tags', 'csat_rating', 'ai_handled',
+      'escalated_at', 'escalation_reason', 'first_response_at', 'resolved_at',
+      'created_at', 'last_message_at',
+    ].join(',');
+
+    const lines = rows.map(r => [
+      esc(r.id),
+      esc(r.status),
+      esc(r.channel),
+      esc(r.subject),
+      esc(r.contactName),
+      esc(r.contactEmail),
+      esc(r.priority),
+      esc(r.sentiment),
+      esc(r.tags?.join(';')),
+      esc(r.csatRating),
+      esc(r.aiHandled),
+      esc(r.escalatedAt?.toISOString()),
+      esc(r.escalationReason),
+      esc(r.firstResponseAt?.toISOString()),
+      esc(r.resolvedAt?.toISOString()),
+      esc(r.createdAt.toISOString()),
+      esc(r.lastMessageAt?.toISOString()),
+    ].join(','));
+
+    const csv = [header, ...lines].join('\n');
+    const filename = `conversations-${new Date().toISOString().slice(0, 10)}.csv`;
+
+    return reply
+      .type('text/csv')
+      .header('Content-Disposition', `attachment; filename="${filename}"`)
+      .send(csv);
+  });
+
   // GET /inbox/conversations/:id — with full message thread
   app.get('/inbox/conversations/:id', async (request, reply) => {
     const session = requireAuth(request, reply);
