@@ -58,7 +58,7 @@ export const api = {
     request<TeamMember[]>('/users', {}, token),
 
   inviteUser: (token: string, body: { email: string; name: string; role: string }) =>
-    request<{ id: string; email: string; inviteLink: string }>(
+    request<{ id: string; email: string; inviteLink: string; emailSent: boolean; emailError?: string }>(
       '/users/invite', { method: 'POST', body: JSON.stringify(body) }, token
     ),
 

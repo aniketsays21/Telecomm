@@ -465,7 +465,7 @@ export async function inviteUserAction(_prev: unknown, formData: FormData) {
 
   try {
     const res = await api.inviteUser(session.token, { email, name, role });
-    return { success: true, inviteLink: res.inviteLink };
+    return { success: true, inviteLink: res.inviteLink, emailSent: res.emailSent, emailError: res.emailError };
   } catch (e: any) {
     return { error: e.message };
   }

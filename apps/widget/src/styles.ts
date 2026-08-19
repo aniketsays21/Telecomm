@@ -131,6 +131,55 @@ export const CSS = `
     border: 1px solid #fee2e2;
   }
 
+  /* Inline links inside a bot bubble — clearly clickable, opens in new tab. */
+  .tc-link {
+    color: var(--tc-color, #4f46e5);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    font-weight: 500;
+  }
+  .tc-link:hover { opacity: 0.85; }
+
+  /* Source-article chips shown under a bot message when the AI cited KB
+     articles. Deliberately smaller than the bubble so they read as "related",
+     not part of the reply itself. */
+  .tc-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .tc-source-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    padding: 5px 9px;
+    font-size: 11.5px;
+    line-height: 1.2;
+    text-decoration: none;
+    color: #374151;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    transition: border-color 120ms ease, color 120ms ease;
+  }
+  .tc-source-chip:hover {
+    border-color: var(--tc-color, #4f46e5);
+    color: var(--tc-color, #4f46e5);
+  }
+  .tc-source-icon {
+    font-size: 10px;
+    color: var(--tc-color, #4f46e5);
+    line-height: 1;
+  }
+  .tc-source-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 220px;
+  }
+
   .tc-time {
     font-size: 10.5px;
     color: #9ca3af;

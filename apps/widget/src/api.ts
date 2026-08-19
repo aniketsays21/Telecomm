@@ -3,6 +3,8 @@ export interface ChatResponse {
   reply: string;
   escalated: boolean;
   aiConfidence?: number;
+  /** Knowledge-base articles the AI drew on, in relevance order. */
+  sources?: Array<{ title: string; url?: string }>;
 }
 
 export interface WidgetMessage {

@@ -93,6 +93,10 @@ export async function chatRoutes(app: FastifyInstance) {
     let replyText: string;
     let escalated = false;
     let aiConfidence: string | undefined;
+    // Captured for the widget response so the customer sees clickable chips
+    // linking to the KB articles the AI cited. Kept as `unknown` in the outer
+    // scope so the fallback path can leave it undefined without a type cast.
+    let aiSourcesJson: unknown;
 
     try {
       // Load the last ~10 turns so the AI can respond in context rather than
@@ -117,6 +121,7 @@ export async function chatRoutes(app: FastifyInstance) {
 
       replyText = aiAnswer.answer;
       aiConfidence = String(aiAnswer.confidence.toFixed(2));
+      aiSourcesJson = aiAnswer.sources;
 
       // Persist anything the AI extracted from the customer's message so the
       // human agent picks up an already-identified visitor and repeat sessions
@@ -244,11 +249,32 @@ export async function chatRoutes(app: FastifyInstance) {
       });
     }
 
+    // Sources to surface as clickable chips under the bot reply. Only include
+    // KB docs whose URL is non-null (files/manual docs have no URL to link),
+    // and dedupe by URL so the widget doesn't stack two chips for the same
+    // article that matched twice.
+    const surfacedSources = (() => {
+      const raw = (typeof aiSourcesJson === 'object' && aiSourcesJson)
+        ? (aiSourcesJson as Array<{ title?: string; url?: string }>)
+        : [];
+      const seen = new Set<string>();
+      const out: Array<{ title: string; url: string }> = [];
+      for (const s of raw) {
+        if (!s?.url) continue;
+        if (seen.has(s.url)) continue;
+        seen.add(s.url);
+        out.push({ title: s.title || s.url, url: s.url });
+        if (out.length >= 3) break;
+      }
+      return out;
+    })();
+
     return {
       conversationId: conversation.id,
       reply: replyText,
       escalated,
       aiConfidence: aiConfidence ? parseFloat(aiConfidence) : undefined,
+      sources: surfacedSources.length ? surfacedSources : undefined,
     };
   });
 

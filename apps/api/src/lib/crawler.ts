@@ -99,6 +99,31 @@ async function fetchDisallowedPaths(origin: string): Promise<RegExp[]> {
   }
 }
 
+/**
+ * Some sites list their sitemap in robots.txt under `Sitemap:` — not at the
+ * conventional `/sitemap.xml`. Fetch robots.txt once and extract every
+ * Sitemap directive so the crawler can seed from the "right" sitemap.
+ */
+async function fetchRobotsSitemapUrls(origin: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${origin}/robots.txt`, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!res.ok) return [];
+    const text = await res.text();
+    const found: string[] = [];
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.split('#')[0].trim();
+      const m = line.match(/^sitemap:\s*(\S+)/i);
+      if (m) found.push(m[1]);
+    }
+    return found;
+  } catch {
+    return [];
+  }
+}
+
 function disallowToRegex(pattern: string): RegExp {
   // Escape regex metachars, then re-enable `*` (wildcard) and `$` (end).
   const escaped = pattern
@@ -119,9 +144,11 @@ function isDisallowed(pathname: string, disallowed: RegExp[]): boolean {
  * listed. Returns an empty array on any failure — the caller falls back
  * to BFS link-crawling and still gets useful coverage.
  */
-async function fetchSitemapUrls(origin: string): Promise<string[]> {
+async function fetchSitemapUrls(origin: string, extraSitemaps: string[] = []): Promise<string[]> {
   const urls = new Set<string>();
-  const queue: string[] = [`${origin}/sitemap.xml`];
+  // Start with the conventional path AND any sitemaps declared in robots.txt.
+  // Duplicates are handled by the `visited` set below.
+  const queue: string[] = [`${origin}/sitemap.xml`, ...extraSitemaps];
   const visited = new Set<string>();
 
   while (queue.length > 0 && urls.size < MAX_PAGES * 4) {
@@ -207,8 +234,18 @@ function extractText(html: string): { title: string; content: string } {
     .replace(/<form\b[\s\S]*?<\/form>/gi, '')
     .replace(/<!--[\s\S]*?-->/g, '');
 
-  const text = decodeEntities(clean.replace(/<[^>]+>/g, ' '))
-    .replace(/\s{2,}/g, ' ')
+  // Preserve some structure: block-level tags become double newlines and
+  // headings/list-items get a leading newline so the flattened text still
+  // reads as paragraphs rather than one giant run-on.
+  const structured = clean
+    .replace(/<\/(p|div|section|article|li|h[1-6]|tr|blockquote|pre)>/gi, '\n\n')
+    .replace(/<(br|hr)\s*\/?>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '\n• ')
+    .replace(/<h[1-6][^>]*>/gi, '\n\n');
+
+  const text = decodeEntities(structured.replace(/<[^>]+>/g, ' '))
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 
   return { title, content: text };
@@ -289,11 +326,13 @@ export async function crawlSite(
     }
   };
 
-  // Seed the queue: start URL first, then everything sitemap.xml advertises.
-  // Sitemap URLs go behind the start URL so an obviously-important landing
-  // page indexes first, but ahead of link-follow discoveries (see below).
+  // Seed the queue: start URL first, then everything sitemap.xml advertises
+  // (both the conventional /sitemap.xml AND any URLs listed in robots.txt
+  // under `Sitemap:`). Sitemap URLs go behind the start URL so the landing
+  // page indexes first, but ahead of link-follow discoveries below.
   const queue: string[] = [startUrl];
-  const sitemapUrls = await fetchSitemapUrls(origin);
+  const [robotsSitemaps] = await Promise.all([fetchRobotsSitemapUrls(origin)]);
+  const sitemapUrls = await fetchSitemapUrls(origin, robotsSitemaps);
   for (const u of sitemapUrls) {
     if (!isBlocked(u) && !queue.includes(u)) queue.push(u);
   }

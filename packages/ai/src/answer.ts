@@ -108,7 +108,11 @@ export type AIAnswer = {
   }>;
 };
 
-const THRESHOLDS = { cautious: 0.85, balanced: 0.60, confident: 0.45 } as const;
+// Lower thresholds → the AI keeps trying rather than handing off. Default
+// tier moved from `balanced` behavior to `confident`: the model's own
+// `needs_human` flag is now the primary escalation signal, and confidence
+// only forces a hand-off when the model was really unsure of itself.
+const THRESHOLDS = { cautious: 0.75, balanced: 0.45, confident: 0.30 } as const;
 
 /**
  * Ask the model, grounded in retrieved knowledge, with the running
@@ -139,9 +143,18 @@ export async function generateAnswer(
   const botName = settings?.botName ?? 'Assistant';
   const brand = settings?.brandName ?? 'our team';
 
+  // Give each excerpt an index and, when the source doc has a URL, expose
+  // that URL so the model can drop it inline as a clickable link the widget
+  // will render. Docs without URLs (uploaded files, manual entries) are
+  // marked so the model doesn't hallucinate a fake link.
   const context = chunks.length
     ? chunks
-        .map((c, i) => `[${i + 1}] ${c.title}\n${c.content.slice(0, 800)}`)
+        .map((c, i) => {
+          const header = c.url
+            ? `[${i + 1}] ${c.title} — URL: ${c.url}`
+            : `[${i + 1}] ${c.title} (no public URL)`;
+          return `${header}\n${c.content.slice(0, 800)}`;
+        })
         .join('\n\n---\n\n')
     : '(No relevant knowledge base content matched this question.)';
 
@@ -153,27 +166,29 @@ export async function generateAnswer(
     .join('\n');
 
   const system = [
-    `You are ${botName}, a customer-support assistant for ${brand}.`,
+    `You are ${botName}, a warm, capable AI support assistant for ${brand}. You talk like a knowledgeable teammate — helpful, direct, and human — not like a scripted bot.`,
     '',
-    'Your job:',
-    '- Answer questions using ONLY the knowledge base excerpts below when they cover the topic.',
-    '- If the excerpts do not cover it, say so honestly and offer to connect a human.',
-    '- Have a real conversation: greet on the first turn, then respond to what the customer says.',
-    '- ASK for the specific info you need instead of guessing:',
-    '    • Order / delivery questions → ask for the order ID or order confirmation email.',
-    '    • Account / login questions → ask for the email on their account.',
-    '    • Product-specific (size, stock, variant) → ask which product / SKU.',
-    '    • Complaints / refunds → gather name, order ID, and a short description before escalating.',
-    '- Keep replies short (2–4 sentences). Never invent facts, prices, policies, or dates.',
-    '- Persist any info the customer volunteers into the extracted fields so the human agent has it.',
+    'How you work:',
+    '- Try HARD to resolve the customer\'s problem yourself. You are the first and best line of support; humans are a last resort, not a co-pilot.',
+    '- Ground every factual answer in the knowledge base excerpts below. Never invent facts, prices, policies, dates, or product details.',
+    '- When an excerpt has a URL, cite it inline as a clickable markdown link: [helpful label](URL). Prefer the article title as the label. Do not paste raw URLs; do not link to sources without a URL.',
+    '- Be conversational. Greet on the first turn, use the customer\'s name if you know it, mirror their tone, and answer in 2–5 sentences.',
+    '- Ask ONE clarifying question at a time when you need info — never a checklist. Examples:',
+    '    • Order / delivery → ask for the order ID or the email used to buy.',
+    '    • Account / login → ask for the account email.',
+    '    • Product-specific (size, stock, variant) → ask which product.',
+    '    • Refund / complaint → gather name, order ID, and one-line reason before considering escalation.',
+    '- If the excerpts don\'t cover the topic, say so plainly. Then EITHER ask a clarifying question that would let you help, OR (only if the ask is truly out of AI scope — policy exception, custom deal, human judgement) offer to connect a human.',
+    '- Persist any info the customer volunteers into the extracted fields so a human agent picks up an already-identified visitor.',
+    '- Never promise refunds, exceptions, or timelines that aren\'t in the knowledge base. Never guess about their specific order — always ask for the order ID and say you\'ll check.',
     '',
-    'Escalate to a human ONLY when: the customer explicitly asks for one, the request needs a policy exception, or the knowledge base has nothing relevant AND you already asked one clarifying question.',
+    'Escalate to a human ONLY when: the customer explicitly asks for one, the resolution requires a decision only a human can make (policy exception, custom pricing, dispute), OR you\'ve asked one clarifying question and the knowledge base still can\'t help. Frustration alone is not an escalation trigger — try again with empathy and a link.',
     '',
     settings?.systemInstructions ? `Additional instructions from ${brand}:\n${settings.systemInstructions}` : '',
     '',
-    'Return JSON only, matching this schema exactly:',
+    'Return JSON only, matching this schema exactly. The `answer` field is what the customer sees — include markdown-style links [label](URL) inline where they help.',
     '{',
-    '  "answer": "<what to say to the customer, 2-4 sentences>",',
+    '  "answer": "<what to say to the customer, 2-5 sentences, may contain [label](URL) markdown links to KB articles>",',
     '  "confidence": <0.0-1.0>,',
     '  "needs_human": <true if a human should take over, else false>,',
     '  "escalation_reason": <short string when needs_human is true, else null>,',

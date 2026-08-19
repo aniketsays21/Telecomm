@@ -1,11 +1,12 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { db } from '@telecomm/db';
-import { users } from '@telecomm/db/schema';
+import { users, workspaces } from '@telecomm/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { requireAdmin, requireAuth } from '../../middleware/auth.js';
 import { randomBytes } from 'crypto';
 import { webUrl } from '../../lib/urls.js';
+import { sendMail } from '../../lib/mailer.js';
 
 const inviteBody = z.object({
   email: z.string().email(),
@@ -38,6 +39,77 @@ const updateMemberBody = z.object({
   availability: availabilitySchema.optional(),
   maxConcurrentChats: z.number().int().min(1).max(50).optional(),
 });
+
+/**
+ * Send the "you're invited to join <brand> on Telecomm" email. Uses the
+ * platform sender (SMTP_FROM), not any workspace's Gmail — the invitee has
+ * not agreed to receive mail from that brand yet, and the platform sender
+ * is what has a warm reputation.
+ */
+async function sendInviteEmail(opts: {
+  to: string;
+  inviteeName: string;
+  inviterName: string;
+  brand: string;
+  role: string;
+  link: string;
+}): Promise<void> {
+  const roleLabel = opts.role === 'admin' ? 'an admin' : opts.role === 'readonly' ? 'a viewer' : 'an agent';
+  const subject = `${opts.inviterName} invited you to join ${opts.brand} on Telecomm`;
+
+  const text = [
+    `Hi ${opts.inviteeName},`,
+    '',
+    `${opts.inviterName} invited you to join the ${opts.brand} support workspace on Telecomm as ${roleLabel}.`,
+    '',
+    'Accept the invite and set up your account here:',
+    opts.link,
+    '',
+    'This link is unique to you — do not share it. It expires after your first use.',
+    '',
+    "If you weren't expecting this invite, you can ignore this email.",
+    '',
+    '— The Telecomm team',
+  ].join('\n');
+
+  const html = `
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:520px;margin:0 auto;padding:32px 24px;color:#111827;">
+  <p style="font-size:16px;margin:0 0 16px;">Hi ${escapeHtml(opts.inviteeName)},</p>
+  <p style="font-size:15px;margin:0 0 20px;color:#374151;">
+    <strong>${escapeHtml(opts.inviterName)}</strong> invited you to join the
+    <strong>${escapeHtml(opts.brand)}</strong> support workspace on Telecomm as ${escapeHtml(roleLabel)}.
+  </p>
+  <div style="margin:28px 0;">
+    <a href="${opts.link}"
+       style="display:inline-block;padding:12px 22px;background:#4f46e5;color:#ffffff;text-decoration:none;border-radius:8px;font-size:14px;font-weight:600;">
+      Accept invite &amp; sign up
+    </a>
+  </div>
+  <p style="font-size:12px;color:#6b7280;margin:0 0 12px;">
+    Or copy this link into your browser:<br>
+    <span style="word-break:break-all;color:#4f46e5;">${escapeHtml(opts.link)}</span>
+  </p>
+  <p style="font-size:12px;color:#9ca3af;margin:24px 0 0;border-top:1px solid #e5e7eb;padding-top:16px;">
+    This link is unique to you — do not share it. If you weren&#39;t expecting this invite, you can ignore this email.
+  </p>
+</div>`;
+
+  await sendMail({
+    to: opts.to,
+    subject,
+    text,
+    html,
+  });
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 export const usersRoutes: FastifyPluginAsync = async (app) => {
   // GET /users/me
@@ -115,9 +187,42 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
       invitedBy: session.userId,
     }).returning({ id: users.id, email: users.email, name: users.name, role: users.role, inviteToken: users.inviteToken });
 
-    // TODO: send invite email via Postmark when key is configured
     const inviteLink = `${webUrl()}/invite/${inviteToken}`;
-    return reply.code(201).send({ ...invited, inviteLink });
+
+    // Send the invite email from the platform sender so agents receive it
+    // even before the workspace has any outbound mail configured. The link
+    // lands them on /invite/<token> where they set their own password and
+    // sign in against this workspace.
+    let emailSent = false;
+    let emailError: string | undefined;
+    try {
+      const [ws] = await db
+        .select({ name: workspaces.name })
+        .from(workspaces)
+        .where(eq(workspaces.id, session.workspaceId))
+        .limit(1);
+      const brand = ws?.name ?? 'Telecomm';
+      const [inviter] = await db
+        .select({ name: users.name })
+        .from(users)
+        .where(eq(users.id, session.userId))
+        .limit(1);
+      const inviterName = inviter?.name ?? 'A teammate';
+      await sendInviteEmail({
+        to: invited.email,
+        inviteeName: invited.name,
+        inviterName,
+        brand,
+        role: invited.role,
+        link: inviteLink,
+      });
+      emailSent = true;
+    } catch (err) {
+      emailError = err instanceof Error ? err.message : String(err);
+      app.log.warn({ err, email: invited.email }, 'invite email failed — link returned in response');
+    }
+
+    return reply.code(201).send({ ...invited, inviteLink, emailSent, ...(emailError ? { emailError } : {}) });
   });
 
   // DELETE /users/:id — admin removes a member

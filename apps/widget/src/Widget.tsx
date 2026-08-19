@@ -7,6 +7,8 @@ interface Msg {
   body: string;
   time: string;
   error?: boolean;
+  /** Optional list of KB articles the AI cited when composing this reply. */
+  sources?: Array<{ title: string; url?: string }>;
 }
 
 // How often the widget checks for agent replies from the dashboard. Runs as
@@ -64,6 +66,45 @@ const SendIcon = () => (
     <polygon points="22 2 15 22 11 13 2 9 22 2" />
   </svg>
 );
+
+/**
+ * Render a bot message with inline markdown-style links `[label](url)`,
+ * plus bare `https://…` URLs auto-linked. Links open in a new tab so the
+ * chat stays open in the current tab. Everything else renders as plain
+ * text — no HTML escaping issue since we never dangerouslySetInnerHTML.
+ */
+type Part = { type: 'text' | 'link'; text: string; href?: string };
+
+function parseRich(body: string): Part[] {
+  const parts: Part[] = [];
+  // Markdown links first — [label](url), url must start with http(s) or /.
+  const mdLink = /\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]*)\)/g;
+  const bareUrl = /(?<![("])(https?:\/\/[^\s<>()"']+)/g;
+
+  let cursor = 0;
+  const matches: Array<{ start: number; end: number; text: string; href: string }> = [];
+  let m: RegExpExecArray | null;
+  while ((m = mdLink.exec(body))) {
+    matches.push({ start: m.index, end: m.index + m[0].length, text: m[1], href: m[2] });
+  }
+  // Bare URLs — skip ranges already claimed by a markdown link.
+  const claimed = matches.slice();
+  while ((m = bareUrl.exec(body))) {
+    const s = m.index;
+    const e = s + m[0].length;
+    if (claimed.some((c) => s >= c.start && s < c.end)) continue;
+    matches.push({ start: s, end: e, text: m[1], href: m[1] });
+  }
+  matches.sort((a, b) => a.start - b.start);
+
+  for (const mm of matches) {
+    if (mm.start > cursor) parts.push({ type: 'text', text: body.slice(cursor, mm.start) });
+    parts.push({ type: 'link', text: mm.text, href: mm.href });
+    cursor = mm.end;
+  }
+  if (cursor < body.length) parts.push({ type: 'text', text: body.slice(cursor) });
+  return parts.length ? parts : [{ type: 'text', text: body }];
+}
 
 export function Widget({ workspaceId, apiUrl, greeting }: Props) {
   const [open, setOpen] = useState(false);
@@ -184,7 +225,16 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
     try {
       const res = await sendMessage(apiUrl, workspaceId, sessionId, text);
       const botId = `b-${Date.now()}`;
-      setMsgs(prev => [...prev, { id: botId, role: 'bot', body: res.reply, time: fmt() }]);
+      setMsgs(prev => [
+        ...prev,
+        {
+          id: botId,
+          role: 'bot',
+          body: res.reply,
+          time: fmt(),
+          sources: res.sources && res.sources.length > 0 ? res.sources : undefined,
+        },
+      ]);
       seenIdsRef.current.add(botId);
       setConversationId(res.conversationId);
       persistConversationId(workspaceId, res.conversationId);
@@ -246,7 +296,44 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
         <div id="tc-messages">
           {msgs.map(m => (
             <div key={m.id} class={`tc-msg tc-${m.role}`}>
-              <div class={`tc-bubble${m.error ? ' tc-err' : ''}`}>{m.body}</div>
+              <div class={`tc-bubble${m.error ? ' tc-err' : ''}`}>
+                {m.role === 'bot'
+                  ? parseRich(m.body).map((p, i) =>
+                      p.type === 'link' && p.href ? (
+                        <a
+                          key={i}
+                          class="tc-link"
+                          href={p.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {p.text}
+                        </a>
+                      ) : (
+                        <span key={i}>{p.text}</span>
+                      ),
+                    )
+                  : m.body}
+              </div>
+              {m.role === 'bot' && m.sources && m.sources.length > 0 && (
+                <div class="tc-sources">
+                  {m.sources.slice(0, 3).map((s) => (
+                    s.url ? (
+                      <a
+                        key={s.url}
+                        class="tc-source-chip"
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={s.title}
+                      >
+                        <span class="tc-source-icon" aria-hidden="true">↗</span>
+                        <span class="tc-source-title">{s.title}</span>
+                      </a>
+                    ) : null
+                  ))}
+                </div>
+              )}
               <div class="tc-time">{m.time}</div>
             </div>
           ))}
