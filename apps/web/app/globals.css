@@ -10,28 +10,31 @@
    can be re-tuned by editing this file.
    ───────────────────────────────────────────────────────────── */
 :root {
-  /* Neutrals — warmed on purpose so nothing feels sterile. */
-  --bone:   #F6F3EC;      /* app background                             */
-  --paper:  #FDFBF6;      /* cards, panels, message bubbles             */
-  --ink:    #141311;      /* primary text                                */
-  --ash:    #6B655A;      /* muted text, secondary labels                */
-  --dust:   #A9A196;      /* tertiary — timestamps, hint text            */
-  --rule:   #E3DDD1;      /* hairline borders                            */
-  --rule-2: #EEE9DE;      /* softer divider inside cards                 */
+  /* Neutrals — Zendesk / Intercom / Front-style clean surfaces. High
+     contrast for readability; nothing "warmed" that reads as beige. */
+  --bone:   #F7F8FA;      /* app background — cool light gray            */
+  --paper:  #FFFFFF;      /* cards, panels, message bubbles              */
+  --ink:    #0F172A;      /* primary text — slate-900                    */
+  --ash:    #475569;      /* muted text — slate-600                      */
+  --dust:   #94A3B8;      /* tertiary — slate-400                        */
+  --rule:   #E2E8F0;      /* hairline borders — slate-200                */
+  --rule-2: #F1F5F9;      /* softer divider — slate-100                  */
 
-  /* Accents — hue-family stays low-saturation so headings can dominate. */
-  --forest:      #1F3A2E; /* primary accent (was indigo)                 */
-  --forest-soft: #E6EDE8; /* accent surface (was indigo-50)              */
-  --brick:       #A0341F; /* urgent / breached / danger                  */
-  --brick-soft:  #F3E2DC;
-  --ochre:       #A67B1F; /* warning, snoozed                            */
-  --ochre-soft:  #F1E9D2;
-  --sky:         #345574; /* neutral info (was blue chips)               */
-  --sky-soft:    #E1E7EE;
+  /* Primary — a confident indigo that reads as "modern SaaS", not toy. */
+  --forest:      #4F46E5; /* primary accent — indigo-600                 */
+  --forest-soft: #EEF2FF; /* accent surface — indigo-50                  */
+  --brick:       #DC2626; /* urgent / breached / danger — red-600        */
+  --brick-soft:  #FEE2E2;
+  --ochre:       #D97706; /* warning, snoozed — amber-600                */
+  --ochre-soft:  #FEF3C7;
+  --sky:         #0284C7; /* neutral info — sky-600                      */
+  --sky-soft:    #E0F2FE;
 
-  /* Typography shortcuts. */
-  --font-display: var(--font-serif), 'Iowan Old Style', Georgia, serif;
-  --font-body:    var(--font-sans), 'Helvetica Neue', Arial, sans-serif;
+  /* Typography shortcuts. Display now points at the same sans as body —
+     no italic serif anywhere. Headings get weight + tracking, not a
+     different font. */
+  --font-display: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --font-body:    var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
   --font-numeric: var(--font-mono), 'SF Mono', 'JetBrains Mono', monospace;
 }
 
@@ -55,8 +58,12 @@ body { font-family: var(--font-body); font-feature-settings: 'ss01', 'cv11'; }
    Utility classes — used by many components so kept central.
    ───────────────────────────────────────────────────────────── */
 
-.font-display  { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.02em; }
+/* Display headings: heavy sans, tighter tracking. Never italic. */
+.font-display  { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.02em; font-style: normal !important; }
 .font-numeric  { font-family: var(--font-numeric); font-variant-numeric: tabular-nums; }
+
+/* Neutralize any lingering italic modifier from the older serif theme. */
+.font-display.italic, .font-display[style*="italic"] { font-style: normal !important; }
 
 /* Uppercase micro-labels ("CONTACT", "CONVERSATION") — an editorial staple. */
 .eyebrow {

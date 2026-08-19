@@ -189,40 +189,52 @@ export const usersRoutes: FastifyPluginAsync = async (app) => {
 
     const inviteLink = `${webUrl()}/invite/${inviteToken}`;
 
-    // Send the invite email from the platform sender so agents receive it
-    // even before the workspace has any outbound mail configured. The link
-    // lands them on /invite/<token> where they set their own password and
-    // sign in against this workspace.
-    let emailSent = false;
-    let emailError: string | undefined;
-    try {
-      const [ws] = await db
-        .select({ name: workspaces.name })
-        .from(workspaces)
-        .where(eq(workspaces.id, session.workspaceId))
-        .limit(1);
-      const brand = ws?.name ?? 'Telecomm';
-      const [inviter] = await db
-        .select({ name: users.name })
-        .from(users)
-        .where(eq(users.id, session.userId))
-        .limit(1);
-      const inviterName = inviter?.name ?? 'A teammate';
-      await sendInviteEmail({
-        to: invited.email,
-        inviteeName: invited.name,
-        inviterName,
-        brand,
-        role: invited.role,
-        link: inviteLink,
-      });
-      emailSent = true;
-    } catch (err) {
-      emailError = err instanceof Error ? err.message : String(err);
-      app.log.warn({ err, email: invited.email }, 'invite email failed — link returned in response');
+    // Kick off the email in the background. The invite row is already saved
+    // so the recipient can accept via the returned link regardless — no
+    // matter how slow (or misconfigured) the SMTP provider is, we do NOT
+    // hold the HTTP response waiting for a network round-trip we can't
+    // control. Delivery success shows up in the mailer logs, not on this
+    // response.
+    const smtpConfigured = !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+    if (smtpConfigured) {
+      (async () => {
+        try {
+          const [ws] = await db
+            .select({ name: workspaces.name })
+            .from(workspaces)
+            .where(eq(workspaces.id, session.workspaceId))
+            .limit(1);
+          const brand = ws?.name ?? 'Telecomm';
+          const [inviter] = await db
+            .select({ name: users.name })
+            .from(users)
+            .where(eq(users.id, session.userId))
+            .limit(1);
+          const inviterName = inviter?.name ?? 'A teammate';
+          await sendInviteEmail({
+            to: invited.email,
+            inviteeName: invited.name,
+            inviterName,
+            brand,
+            role: invited.role,
+            link: inviteLink,
+          });
+        } catch (err) {
+          app.log.warn({ err, email: invited.email }, 'invite email failed — link is still on the invite row');
+        }
+      })();
     }
 
-    return reply.code(201).send({ ...invited, inviteLink, emailSent, ...(emailError ? { emailError } : {}) });
+    return reply.code(201).send({
+      ...invited,
+      inviteLink,
+      // Best-effort signal to the UI: SMTP is configured, so an email is
+      // most likely on its way. When it isn't configured we tell the admin
+      // to copy the link so they aren't waiting on a delivery that isn't
+      // happening.
+      emailSent: smtpConfigured,
+      ...(smtpConfigured ? {} : { emailError: 'SMTP not configured on API. Copy the invite link and share it directly.' }),
+    });
   });
 
   // DELETE /users/:id — admin removes a member

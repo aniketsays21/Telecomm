@@ -78,6 +78,16 @@ async function build() {
   return app;
 }
 
+// Self-heal schema BEFORE building the API so the first request can't hit
+// a query for a column the DB doesn't have yet. Idempotent — safe to run on
+// every boot.
+try {
+  const { runStartupMigrations } = await import('./lib/startup-migrations.js');
+  await runStartupMigrations();
+} catch (err) {
+  console.warn('[startup] schema self-heal failed (continuing):', err instanceof Error ? err.message : err);
+}
+
 const app = await build();
 
 // Start background workers (ingest + embed)

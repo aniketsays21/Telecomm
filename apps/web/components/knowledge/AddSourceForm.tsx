@@ -5,7 +5,8 @@ import { kbCreateSourceAction } from '@/lib/actions';
 
 const TYPES = [
   { value: 'website', label: 'Website', desc: 'Crawl and index pages from a URL' },
-  { value: 'manual', label: 'Manual text', desc: 'Paste in help content directly' },
+  { value: 'file',    label: 'Upload document', desc: 'PDF, DOCX, TXT, MD — up to 25 MB' },
+  { value: 'manual',  label: 'Manual text', desc: 'Paste in help content directly' },
 ];
 
 export function AddSourceForm() {
@@ -13,7 +14,7 @@ export function AddSourceForm() {
   const [type, setType] = useState('website');
 
   return (
-    <form action={action} className="space-y-4">
+    <form action={action} encType="multipart/form-data" className="space-y-4">
       {/* Type selector */}
       <div className="flex gap-3">
         {TYPES.map(t => (
@@ -53,8 +54,8 @@ export function AddSourceForm() {
         />
       </div>
 
-      {/* URL or content */}
-      {type === 'website' ? (
+      {/* URL, file, or content depending on type */}
+      {type === 'website' && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Start URL
@@ -66,9 +67,25 @@ export function AddSourceForm() {
             placeholder="https://help.yoursite.com"
             className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
           />
-          <p className="text-xs text-gray-400 mt-1">We'll crawl up to 25 pages starting from this URL.</p>
+          <p className="text-xs text-gray-400 mt-1">We&apos;ll crawl up to 500 pages starting from this URL.</p>
         </div>
-      ) : (
+      )}
+      {type === 'file' && (
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Choose a file
+          </label>
+          <input
+            type="file"
+            name="file"
+            required
+            accept=".pdf,.docx,.doc,.txt,.md,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+            className="w-full text-sm text-gray-700 file:mr-3 file:px-3 file:py-1.5 file:rounded-md file:border-0 file:bg-indigo-50 file:text-indigo-700 file:text-xs file:font-medium hover:file:bg-indigo-100"
+          />
+          <p className="text-xs text-gray-400 mt-1">PDF, DOCX, TXT or MD. 25 MB maximum.</p>
+        </div>
+      )}
+      {type === 'manual' && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
             Content

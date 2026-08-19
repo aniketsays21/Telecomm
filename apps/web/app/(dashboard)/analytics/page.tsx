@@ -28,8 +28,8 @@ export default async function AnalyticsPage({ searchParams }: Props) {
       <div className="flex items-end justify-between mb-12 pb-6" style={{ borderBottom: '1px solid var(--rule)' }}>
         <div>
           <p className="eyebrow">Dashboard · Last {days} days</p>
-          <h1 className="font-display text-5xl italic leading-none mt-3" style={{ color: 'var(--ink)' }}>
-            How things are going.
+          <h1 className="text-3xl font-semibold tracking-tight mt-2" style={{ color: 'var(--ink)' }}>
+            Overview
           </h1>
         </div>
         <div className="flex items-center gap-4 text-xs font-numeric" style={{ color: 'var(--ash)' }}>

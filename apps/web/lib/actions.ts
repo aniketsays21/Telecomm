@@ -295,9 +295,23 @@ export async function kbCreateSourceAction(_prev: unknown, formData: FormData) {
   if (!session) return { error: 'Not authenticated' };
 
   const type = formData.get('type') as string;
-  const name = formData.get('name') as string;
+  const nameField = formData.get('name') as string | null;
   const startUrl = formData.get('startUrl') as string | null;
-  const content = formData.get('content') as string | null;
+  let content = (formData.get('content') as string | null) ?? undefined;
+  const file = formData.get('file') as File | null;
+
+  // File type gets forwarded as base64-encoded `content` (same path the
+  // onboarding step uses). 25 MB hard cap; anything larger is rejected here
+  // before we hit Next's server-action body limit.
+  if (type === 'file') {
+    if (!file || file.size === 0) return { error: 'Choose a file to upload.' };
+    if (file.size > 25 * 1024 * 1024) {
+      return { error: `File is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum is 25 MB.` };
+    }
+    const buf = Buffer.from(await file.arrayBuffer());
+    content = buf.toString('base64');
+  }
+  const name = nameField || (type === 'file' ? file?.name ?? 'Uploaded doc' : 'Untitled');
 
   try {
     const { api } = await import('./api');

@@ -14,7 +14,9 @@ const agentNav = [
   { href: '/inbox', label: 'Inbox' },
 ];
 
-// Grouped so the sidebar reads like a table of contents, not a wall of items.
+// Sidebar structure per admin request. Sections read top → bottom:
+// what you look at every day (Work), where messages come from (Manage),
+// how the workspace is tuned (Configure).
 const adminNavGroups: Array<{ eyebrow: string; items: { href: string; label: string }[] }> = [
   {
     eyebrow: 'Work',
@@ -25,10 +27,9 @@ const adminNavGroups: Array<{ eyebrow: string; items: { href: string; label: str
     ],
   },
   {
-    eyebrow: 'Channels',
+    eyebrow: 'Manage',
     items: [
       { href: '/settings/widget',   label: 'Chat widget' },
-      { href: '/settings/email',    label: 'Email' },
       { href: '/settings/gmail',    label: 'Gmail' },
       { href: '/settings/triggers', label: 'Proactive triggers' },
     ],
@@ -36,10 +37,10 @@ const adminNavGroups: Array<{ eyebrow: string; items: { href: string; label: str
   {
     eyebrow: 'Configure',
     items: [
-      { href: '/settings/knowledge', label: 'Knowledge' },
+      { href: '/settings/knowledge', label: 'Knowledge base' },
+      { href: '/settings/webhooks',  label: 'Webhooks' },
       { href: '/settings/canned',    label: 'Canned replies' },
       { href: '/settings/sla',       label: 'SLA' },
-      { href: '/settings/webhooks',  label: 'Webhooks' },
     ],
   },
 ];
@@ -49,30 +50,31 @@ export function Sidebar({ role, name, email }: Props) {
 
   return (
     <aside
-      className="w-60 shrink-0 flex flex-col border-r"
+      className="w-64 shrink-0 flex flex-col border-r"
       style={{ background: 'var(--paper)', borderColor: 'var(--rule)' }}
     >
-      {/* Wordmark — serif italic for character, small dot for the "T" opener */}
-      <div className="px-6 pt-7 pb-5">
-        <div className="flex items-baseline gap-1.5">
-          <span className="font-display text-2xl italic" style={{ color: 'var(--ink)' }}>
-            Telecomm
-          </span>
-          <span
-            className="w-1.5 h-1.5 rounded-full"
+      {/* Wordmark — clean sans, single accent dot */}
+      <div className="px-5 pt-6 pb-5" style={{ borderBottom: '1px solid var(--rule-2)' }}>
+        <div className="flex items-center gap-2">
+          <div
+            className="w-7 h-7 rounded-md flex items-center justify-center text-white text-sm font-semibold"
             style={{ background: 'var(--forest)' }}
-            aria-hidden="true"
-          />
+          >
+            T
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold leading-tight" style={{ color: 'var(--ink)' }}>Telecomm</p>
+            <p className="text-[10px] leading-tight" style={{ color: 'var(--dust)' }}>Customer support</p>
+          </div>
         </div>
-        <p className="eyebrow mt-1" style={{ color: 'var(--dust)' }}>Support · v1</p>
       </div>
 
-      <nav className="flex-1 px-4 pb-4 overflow-y-auto">
+      <nav className="flex-1 px-3 pt-4 pb-4 overflow-y-auto">
         {role === 'admin' ? (
           adminNavGroups.map((group, i) => (
             <div key={group.eyebrow} className={i === 0 ? '' : 'mt-6'}>
-              <p className="eyebrow px-2 mb-2">{group.eyebrow}</p>
-              <ul className="space-y-px">
+              <p className="eyebrow px-3 mb-2">{group.eyebrow}</p>
+              <ul className="space-y-0.5">
                 {group.items.map((item) => (
                   <NavItem key={item.href} href={item.href} label={item.label} pathname={pathname} />
                 ))}
@@ -80,7 +82,7 @@ export function Sidebar({ role, name, email }: Props) {
             </div>
           ))
         ) : (
-          <ul className="space-y-px mt-2">
+          <ul className="space-y-0.5 mt-2">
             {agentNav.map((item) => (
               <NavItem key={item.href} href={item.href} label={item.label} pathname={pathname} />
             ))}
@@ -88,22 +90,29 @@ export function Sidebar({ role, name, email }: Props) {
         )}
       </nav>
 
-      {/* User card — separated by a hairline, not a shaded block */}
-      <div className="px-4 py-4 border-t" style={{ borderColor: 'var(--rule)' }}>
-        <div className="px-2">
-          <p className="text-sm font-medium truncate" style={{ color: 'var(--ink)' }}>{name}</p>
-          <p className="text-xs truncate mt-0.5" style={{ color: 'var(--ash)' }}>{email}</p>
-          <p className="eyebrow mt-1.5" style={{ color: 'var(--forest)' }}>{role}</p>
+      {/* User card */}
+      <div className="px-3 py-3 border-t" style={{ borderColor: 'var(--rule-2)' }}>
+        <div className="px-3 py-2 rounded-md" style={{ background: 'var(--rule-2)' }}>
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold shrink-0"
+              style={{ background: 'var(--forest)', color: 'var(--paper)' }}
+            >
+              {name[0]?.toUpperCase() ?? '?'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium truncate" style={{ color: 'var(--ink)' }}>{name}</p>
+              <p className="text-[11px] truncate" style={{ color: 'var(--ash)' }}>{email}</p>
+            </div>
+          </div>
         </div>
-        <form action={logoutAction} className="mt-3">
+        <form action={logoutAction} className="mt-1">
           <button
             type="submit"
-            className="w-full text-left px-2 py-1.5 text-sm rounded transition-colors"
+            className="w-full text-left px-3 py-1.5 text-xs rounded transition-colors hover:bg-slate-100"
             style={{ color: 'var(--ash)' }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = 'var(--brick)')}
-            onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--ash)')}
           >
-            Sign out ↗
+            Sign out
           </button>
         </form>
       </div>
@@ -117,22 +126,15 @@ function NavItem({ href, label, pathname }: { href: string; label: string; pathn
     <li>
       <Link
         href={href}
-        className="group flex items-center gap-2.5 px-2 py-1.5 text-sm transition-colors rounded"
+        className="group flex items-center gap-2.5 px-3 py-1.5 text-sm rounded-md transition-colors"
         style={{
-          color: active ? 'var(--ink)' : 'var(--ash)',
+          color: active ? 'var(--forest)' : 'var(--ash)',
           background: active ? 'var(--forest-soft)' : 'transparent',
           fontWeight: active ? 500 : 400,
         }}
+        onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--rule-2)'; }}
+        onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
       >
-        {/* Small marker replaces the pill background */}
-        <span
-          aria-hidden="true"
-          className="w-1 h-1 rounded-full transition-all"
-          style={{
-            background: active ? 'var(--forest)' : 'transparent',
-            outline: active ? 'none' : '1px solid var(--rule)',
-          }}
-        />
         {label}
       </Link>
     </li>
