@@ -21,6 +21,31 @@ export const CSS = `
   }
   #tc-launcher:hover { transform: scale(1.07); box-shadow: 0 6px 22px var(--tc-shadow-lg, rgba(79,70,229,0.55)); }
 
+  /* Unread badge — sits on the top-right of the launcher when the widget is
+     closed and there are unread agent messages. */
+  #tc-badge {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: 10px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 20px;
+    text-align: center;
+    box-shadow: 0 0 0 2px #fff;
+    pointer-events: none;
+    animation: tc-badge-pop 0.25s ease-out;
+  }
+  @keyframes tc-badge-pop {
+    from { transform: scale(0.4); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+  }
+
   #tc-window {
     position: fixed;
     bottom: 92px;

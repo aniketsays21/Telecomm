@@ -9,8 +9,10 @@ interface Msg {
   error?: boolean;
 }
 
-// How often the widget checks for agent replies from the dashboard. Only runs
-// while the chat window is open, so bandwidth stays negligible.
+// How often the widget checks for agent replies from the dashboard. Runs as
+// long as a conversation exists — open OR closed — so agent replies sent
+// while the customer has the widget closed still arrive and show up as an
+// unread badge on the launcher.
 const POLL_INTERVAL_MS = 3000;
 
 interface Props {
@@ -30,6 +32,17 @@ function genSessionId(workspaceId: string): string {
   const id = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
   localStorage.setItem(key, id);
   return id;
+}
+
+// The conversation id survives a page reload so the customer walks back into
+// their thread instead of starting a fresh one every time. Keyed on
+// workspaceId so multiple embedded widgets on the same host don't collide.
+function convoKey(workspaceId: string): string { return `_tc_cid_${workspaceId}`; }
+function loadStoredConversationId(workspaceId: string): string | null {
+  try { return localStorage.getItem(convoKey(workspaceId)); } catch { return null; }
+}
+function persistConversationId(workspaceId: string, id: string): void {
+  try { localStorage.setItem(convoKey(workspaceId), id); } catch { /* no-op */ }
 }
 
 const ChatIcon = () => (
@@ -61,9 +74,14 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
   const [loading, setLoading] = useState(false);
   const [escalated, setEscalated] = useState(false);
   const [sessionId] = useState(() => genSessionId(workspaceId));
-  // Server-side conversation id, learned from the first sendMessage response.
-  // Null until the customer sends their first message.
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  // Hydrate conversationId from localStorage so a reload doesn't lose the
+  // thread. Null only until the customer has actually sent their first
+  // message and we have nothing stored.
+  const [conversationId, setConversationId] = useState<string | null>(() => loadStoredConversationId(workspaceId));
+  // Unread count for the launcher badge — bumps every time a bot/agent message
+  // arrives while the window is closed, resets to 0 when the customer opens it.
+  const [unread, setUnread] = useState(0);
+
   // Most recent server-issued timestamp we've displayed. The polling loop
   // asks the server "anything newer than this?" — the ref avoids re-triggering
   // the polling useEffect on every message.
@@ -71,6 +89,11 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
   // Dedupe by server message id so an agent reply that arrives via polling
   // isn't re-added if the same id shows up on a later poll.
   const seenIdsRef = useRef<Set<string>>(new Set(['0']));
+  // Read the latest `open` value inside the polling tick without making
+  // `open` a dependency of the effect (which would tear down + rebuild the
+  // interval every time the user toggles).
+  const openRef = useRef(open);
+  useEffect(() => { openRef.current = open; }, [open]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -80,14 +103,20 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
   }, [msgs, loading]);
 
   useEffect(() => {
-    if (open) textareaRef.current?.focus();
+    if (open) {
+      textareaRef.current?.focus();
+      // Opening the panel means the customer has now seen whatever agent
+      // messages arrived while closed. Drop the badge.
+      setUnread(0);
+    }
   }, [open]);
 
-  // Poll for agent replies (dashboard → widget). Runs only while the chat
-  // window is open AND a conversation exists (learned from the first send).
-  // Skips the request if the tab is hidden to keep costs down.
+  // Poll for agent replies (dashboard → widget). Runs as long as we know a
+  // conversationId, whether the widget is open or closed. Skips the request
+  // if the browser tab is hidden — a hidden tab can't render anyway, and
+  // Chrome throttles our interval there.
   useEffect(() => {
-    if (!open || !conversationId) return;
+    if (!conversationId) return;
     let cancelled = false;
     async function tick() {
       if (cancelled || document.hidden) return;
@@ -100,6 +129,7 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
           lastSeenAtRef.current,
         );
         if (cancelled || news.length === 0) return;
+        let unseenBotArrivals = 0;
         setMsgs(prev => {
           const additions: Msg[] = [];
           for (const m of news) {
@@ -111,12 +141,18 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
               body: m.body,
               time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             });
+            if (m.role === 'bot') unseenBotArrivals++;
             if (m.createdAt > lastSeenAtRef.current) {
               lastSeenAtRef.current = m.createdAt;
             }
           }
           return additions.length ? [...prev, ...additions] : prev;
         });
+        // Only badge messages the customer hasn't seen yet — if the panel is
+        // open at this moment, they're already looking.
+        if (!openRef.current && unseenBotArrivals > 0) {
+          setUnread(u => u + unseenBotArrivals);
+        }
       } catch {
         // Silent: transient network errors just mean we retry on the next tick.
       }
@@ -127,7 +163,7 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [open, conversationId, apiUrl, workspaceId, sessionId]);
+  }, [conversationId, apiUrl, workspaceId, sessionId]);
 
   const doSend = useCallback(async () => {
     const text = input.trim();
@@ -143,6 +179,7 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
       setMsgs(prev => [...prev, { id: botId, role: 'bot', body: res.reply, time: fmt() }]);
       seenIdsRef.current.add(botId);
       setConversationId(res.conversationId);
+      persistConversationId(workspaceId, res.conversationId);
       if (res.escalated) setEscalated(true);
     } catch {
       setMsgs(prev => [...prev, {
@@ -176,9 +213,12 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
       <button
         id="tc-launcher"
         onClick={() => setOpen(o => !o)}
-        aria-label={open ? 'Close chat' : 'Open chat'}
+        aria-label={open ? 'Close chat' : unread > 0 ? `Open chat, ${unread} new message${unread === 1 ? '' : 's'}` : 'Open chat'}
       >
         {open ? <CloseIcon /> : <ChatIcon />}
+        {!open && unread > 0 && (
+          <span id="tc-badge" aria-hidden="true">{unread > 9 ? '9+' : unread}</span>
+        )}
       </button>
 
       {/* Chat window */}
