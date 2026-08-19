@@ -152,6 +152,71 @@ export async function chatRoutes(app: FastifyInstance) {
     };
   });
 
+  // GET /widget/messages — poll for new messages on a conversation.
+  //
+  // Public endpoint so the embedded widget can pick up agent replies from the
+  // dashboard without an authenticated session. Access is scoped by requiring
+  // both the workspace and the customer's `sessionId` (stored in the contact's
+  // externalId), so a third party cannot enumerate conversations without
+  // guessing both a workspace UUID and the anonymous session token.
+  app.get('/widget/messages', {
+    config: { rateLimit: { max: 120, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
+    const q = z.object({
+      workspaceId: z.string().uuid(),
+      conversationId: z.string().uuid(),
+      sessionId: z.string().min(8),
+      since: z.string().datetime().optional(),
+    }).safeParse(request.query);
+    if (!q.success) return reply.code(400).send({ error: q.error.flatten() });
+
+    const { workspaceId, conversationId, sessionId, since } = q.data;
+
+    // Verify the conversation belongs to this workspace AND to this session's
+    // contact — otherwise anyone with a workspaceId could read any conversation.
+    const [convo] = await db
+      .select({ id: conversations.id, contactId: conversations.contactId })
+      .from(conversations)
+      .innerJoin(contacts, eq(contacts.id, conversations.contactId))
+      .where(and(
+        eq(conversations.id, conversationId),
+        eq(conversations.workspaceId, workspaceId),
+        eq(contacts.externalId, sessionId),
+      ))
+      .limit(1);
+    if (!convo) return reply.code(404).send({ error: 'Conversation not found' });
+
+    const sinceDate = since ? new Date(since) : new Date(0);
+    const rows = await db
+      .select({
+        id: messages.id,
+        authorType: messages.authorType,
+        body: messages.body,
+        createdAt: messages.createdAt,
+      })
+      .from(messages)
+      .where(and(
+        eq(messages.conversationId, conversationId),
+        // Only surface messages the customer should see; internal notes stay
+        // in the agent view. `>` (not `>=`) prevents re-serving the boundary.
+        eq(messages.isInternalNote, false),
+      ))
+      .orderBy(messages.createdAt);
+
+    const newer = rows.filter((r) => r.createdAt.getTime() > sinceDate.getTime());
+    return {
+      messages: newer.map((m) => ({
+        id: m.id,
+        // Map the API-side taxonomy to the widget's simple two-role model:
+        // contact = the customer themself (already displayed optimistically),
+        // ai/agent = the "bot" side of the widget UI.
+        role: m.authorType === 'contact' ? 'user' : 'bot',
+        body: m.body,
+        createdAt: m.createdAt.toISOString(),
+      })),
+    };
+  });
+
   // POST /widget/ingest — trigger source ingestion (called from onboarding or settings)
   app.post('/widget/ingest/:sourceId', async (request, reply) => {
     const { sourceId } = request.params as { sourceId: string };

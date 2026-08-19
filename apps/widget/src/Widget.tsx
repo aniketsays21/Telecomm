@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'preact/hooks';
-import { sendMessage } from './api';
+import { sendMessage, fetchNewMessages } from './api';
 
 interface Msg {
   id: string;
@@ -8,6 +8,10 @@ interface Msg {
   time: string;
   error?: boolean;
 }
+
+// How often the widget checks for agent replies from the dashboard. Only runs
+// while the chat window is open, so bandwidth stays negligible.
+const POLL_INTERVAL_MS = 3000;
 
 interface Props {
   workspaceId: string;
@@ -57,6 +61,16 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
   const [loading, setLoading] = useState(false);
   const [escalated, setEscalated] = useState(false);
   const [sessionId] = useState(() => genSessionId(workspaceId));
+  // Server-side conversation id, learned from the first sendMessage response.
+  // Null until the customer sends their first message.
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  // Most recent server-issued timestamp we've displayed. The polling loop
+  // asks the server "anything newer than this?" — the ref avoids re-triggering
+  // the polling useEffect on every message.
+  const lastSeenAtRef = useRef<string>(new Date(0).toISOString());
+  // Dedupe by server message id so an agent reply that arrives via polling
+  // isn't re-added if the same id shows up on a later poll.
+  const seenIdsRef = useRef<Set<string>>(new Set(['0']));
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -69,6 +83,52 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
     if (open) textareaRef.current?.focus();
   }, [open]);
 
+  // Poll for agent replies (dashboard → widget). Runs only while the chat
+  // window is open AND a conversation exists (learned from the first send).
+  // Skips the request if the tab is hidden to keep costs down.
+  useEffect(() => {
+    if (!open || !conversationId) return;
+    let cancelled = false;
+    async function tick() {
+      if (cancelled || document.hidden) return;
+      try {
+        const news = await fetchNewMessages(
+          apiUrl,
+          workspaceId,
+          sessionId,
+          conversationId!,
+          lastSeenAtRef.current,
+        );
+        if (cancelled || news.length === 0) return;
+        setMsgs(prev => {
+          const additions: Msg[] = [];
+          for (const m of news) {
+            if (seenIdsRef.current.has(m.id)) continue;
+            seenIdsRef.current.add(m.id);
+            additions.push({
+              id: m.id,
+              role: m.role,
+              body: m.body,
+              time: new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            });
+            if (m.createdAt > lastSeenAtRef.current) {
+              lastSeenAtRef.current = m.createdAt;
+            }
+          }
+          return additions.length ? [...prev, ...additions] : prev;
+        });
+      } catch {
+        // Silent: transient network errors just mean we retry on the next tick.
+      }
+    }
+    const id = setInterval(tick, POLL_INTERVAL_MS);
+    tick();
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [open, conversationId, apiUrl, workspaceId, sessionId]);
+
   const doSend = useCallback(async () => {
     const text = input.trim();
     if (!text || loading) return;
@@ -79,7 +139,10 @@ export function Widget({ workspaceId, apiUrl, greeting }: Props) {
 
     try {
       const res = await sendMessage(apiUrl, workspaceId, sessionId, text);
-      setMsgs(prev => [...prev, { id: `b-${Date.now()}`, role: 'bot', body: res.reply, time: fmt() }]);
+      const botId = `b-${Date.now()}`;
+      setMsgs(prev => [...prev, { id: botId, role: 'bot', body: res.reply, time: fmt() }]);
+      seenIdsRef.current.add(botId);
+      setConversationId(res.conversationId);
       if (res.escalated) setEscalated(true);
     } catch {
       setMsgs(prev => [...prev, {
