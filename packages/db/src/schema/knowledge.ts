@@ -2,34 +2,18 @@ import { pgTable, text, jsonb, timestamp, uuid, integer, index, pgEnum, vector, 
 import { workspaces } from './workspaces';
 import { users } from './users';
 
-export const articleStatusEnum = pgEnum('article_status', ['draft', 'published']);
+// kb_categories / kb_articles / escalation_rules / actions tables were part of
+// an earlier "self-hosted help centre + custom rules" scope that never
+// shipped — the schema references were removed to keep drizzle-kit output
+// clean, but the tables (if any exist in old databases) are left in place.
+// Drop them manually when you're ready with:
+//   DROP TABLE IF EXISTS kb_articles, kb_categories, escalation_rules, actions;
+//
+// `sourceTypeEnum` still lists shopify/teachable/thinkific for the same
+// reason: the enum values are cheap to keep and removing them requires an
+// ALTER TYPE dance. They just never get inserted.
 export const sourceTypeEnum = pgEnum('source_type', ['website', 'shopify', 'teachable', 'thinkific', 'file', 'manual', 'api']);
 export const sourceStatusEnum = pgEnum('source_status', ['pending', 'syncing', 'ready', 'error']);
-
-export const kbCategories = pgTable('kb_categories', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  slug: text('slug').notNull(),
-  position: integer('position').notNull().default(0),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const kbArticles = pgTable('kb_articles', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  title: text('title').notNull(),
-  slug: text('slug').notNull(),
-  bodyMd: text('body_md').notNull().default(''),
-  categoryId: uuid('category_id').references(() => kbCategories.id),
-  status: articleStatusEnum('status').notNull().default('draft'),
-  authorId: uuid('author_id').references(() => users.id),
-  viewCount: integer('view_count').notNull().default(0),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index('kb_articles_workspace_status_idx').on(t.workspaceId, t.status),
-]);
 
 export const sources = pgTable('sources', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -80,36 +64,6 @@ export const chunks = pgTable('chunks', {
   index('chunks_workspace_idx').on(t.workspaceId),
 ]);
 // Note: HNSW index on embedding is added in migration SQL (drizzle-kit doesn't generate vector indexes yet)
-
-export const actions = pgTable('actions', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  description: text('description').notNull(),
-  sourceId: uuid('source_id').references(() => sources.id, { onDelete: 'cascade' }),
-  kind: text('kind').notNull(), // 'order_lookup' | 'enrollment_check' | 'custom_http'
-  schema: jsonb('schema').$type<Record<string, unknown>>().default({}),
-  config: jsonb('config').$type<Record<string, unknown>>().default({}),
-  enabled: boolean('enabled').notNull().default(true),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const escalationRules = pgTable('escalation_rules', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  name: text('name').notNull(),
-  condition: jsonb('condition').$type<EscalationCondition>().notNull(),
-  action: text('action').notNull().default('assign_human'),
-  priority: integer('priority').notNull().default(0),
-  enabled: boolean('enabled').notNull().default(true),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-export type EscalationCondition =
-  | { type: 'keyword'; keywords: string[] }
-  | { type: 'order_value_above'; amount: number }
-  | { type: 'sentiment'; value: 'angry' | 'frustrated' }
-  | { type: 'repeat_escalation'; count: number };
 
 export const cannedResponses = pgTable('canned_responses', {
   id: uuid('id').primaryKey().defaultRandom(),

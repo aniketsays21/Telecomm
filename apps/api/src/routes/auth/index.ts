@@ -26,7 +26,12 @@ function slugify(name: string) {
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   // POST /auth/signup — create workspace + admin user
-  app.post('/auth/signup', async (request, reply) => {
+  // Tight per-IP cap so a scripted flood can't spin up thousands of empty
+  // workspaces or brute-force the create endpoint. 5/min is generous for a
+  // real human, ruinous for a bot.
+  app.post('/auth/signup', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const body = signupBody.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
@@ -62,7 +67,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // POST /auth/login
-  app.post('/auth/login', async (request, reply) => {
+  // 10/min per IP — a real human retrying a mistyped password 10 times in
+  // a minute means the password is lost, not that they're logging in.
+  // Also stops the trivial "spray a password list against every account"
+  // attack from one machine. Distributed sprays need a WAF; that's out of
+  // scope here.
+  app.post('/auth/login', {
+    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const body = loginBody.safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 
@@ -88,7 +100,11 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // POST /auth/accept-invite — agent sets password via invite token
-  app.post('/auth/accept-invite', async (request, reply) => {
+  // 15/min per IP so a leaked bulk of invite tokens can't be blasted through
+  // from one machine; a real invitee only ever hits this once.
+  app.post('/auth/accept-invite', {
+    config: { rateLimit: { max: 15, timeWindow: '1 minute' } },
+  }, async (request, reply) => {
     const body = z.object({ token: z.string(), password: z.string().min(8), name: z.string().min(2) }).safeParse(request.body);
     if (!body.success) return reply.code(400).send({ error: body.error.flatten() });
 

@@ -4,6 +4,29 @@ import rateLimit from '@fastify/rate-limit';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { randomUUID } from 'crypto';
+import { sql } from 'drizzle-orm';
+import { db } from '@telecomm/db';
+import IORedis from 'ioredis';
+import { redisConnection } from './lib/redis.js';
+
+// Single Redis client for health checks — BullMQ has its own pool; we don't
+// want to reuse those or an aborted health probe could interfere with queue
+// work. Small, dedicated, connected once.
+let _healthRedis: IORedis | null = null;
+function healthRedis(): IORedis {
+  if (_healthRedis) return _healthRedis;
+  _healthRedis = new IORedis({
+    ...redisConnection(),
+    // Health probes must fail fast, not sit in a retry loop.
+    maxRetriesPerRequest: 1,
+    enableOfflineQueue: false,
+    connectTimeout: 2_000,
+    lazyConnect: true,
+  });
+  _healthRedis.on('error', () => { /* swallow — the probe reports the failure */ });
+  return _healthRedis;
+}
 import { authMiddleware } from './middleware/auth.js';
 import { authRoutes } from './routes/auth/index.js';
 import { usersRoutes } from './routes/users/index.js';
@@ -31,19 +54,67 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const WIDGET_PATH = join(__dirname, '..', '..', 'widget', 'dist', 'widget.js');
 
 async function build() {
-  const app = Fastify({ logger: { level: 'info' } });
+  const app = Fastify({
+    logger: { level: 'info' },
+    // Cap the incoming JSON body to 5 MB. Widget messages are tiny; the
+    // largest legitimate payload is a base64-encoded knowledge-base doc
+    // upload (25 MB file → ~34 MB base64) — those come through the web
+    // server-action pipeline, not this API, so 5 MB is comfortable.
+    bodyLimit: 5 * 1024 * 1024,
+    // Trust the reverse-proxy IP so per-IP rate limits key on the real
+    // client, not the Railway proxy. Safe here — only Railway sits in
+    // front of us.
+    trustProxy: true,
+    // Correlate every log line for a single request. Fastify will emit
+    // `reqId=<id>` in each log entry and mirror it in the X-Request-Id
+    // response header, so a user-reported bug can be traced end-to-end.
+    genReqId: (req) => {
+      const inbound = req.headers['x-request-id'];
+      if (typeof inbound === 'string' && inbound.length > 0 && inbound.length < 128) return inbound;
+      return randomUUID();
+    },
+  });
+
+  // Echo the request id back on the response so client-side error reports
+  // can include it.
+  app.addHook('onSend', async (req, reply) => {
+    reply.header('x-request-id', req.id);
+  });
 
   // Allow all origins — widget can be embedded on any customer site;
   // auth relies on JWT in headers (not cookies), so wildcard CORS is safe.
   await app.register(cors, {
     origin: true,
     credentials: false,
+    exposedHeaders: ['x-request-id'],
   });
 
   await app.register(rateLimit, { max: 100, timeWindow: '1 minute' });
   await app.register(authMiddleware);
 
+  // Deep health check: /health returns fast; /health/deep verifies DB and
+  // Redis are actually reachable. Point Railway's health-check at /health
+  // (must return in ~1s) and a monitoring probe (Uptime Kuma etc.) at
+  // /health/deep. A broken DB will drop /health/deep to 503 so alerts fire
+  // instead of routing traffic to a zombie instance.
   app.get('/health', async () => ({ ok: true, ts: new Date().toISOString() }));
+  app.get('/health/deep', async (_req, reply) => {
+    const results: Record<string, { ok: boolean; error?: string }> = {};
+    try {
+      await db.execute(sql`SELECT 1`);
+      results.postgres = { ok: true };
+    } catch (err) {
+      results.postgres = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    try {
+      const pong = await healthRedis().ping();
+      results.redis = { ok: pong === 'PONG' };
+    } catch (err) {
+      results.redis = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+    const allOk = Object.values(results).every((r) => r.ok);
+    return reply.code(allOk ? 200 : 503).send({ ok: allOk, checks: results, ts: new Date().toISOString() });
+  });
 
   // Serve the compiled widget bundle
   app.get('/widget.js', async (_req, reply) => {
